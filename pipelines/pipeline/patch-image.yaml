@@ -1,0 +1,22 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: patch-image
+spec:
+  params:
+    - name: catalogsource
+      description: The name of the catalogsource patch the image
+      type: string
+    - name: sha
+      description: The sha to use for the catalogsource
+      type: string
+      default: "latest"
+  steps:
+    - name: patch
+      image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+      command: ["/bin/bash", "-c"]
+      args:
+        - |-
+          echo $(inputs.params.sha)
+          echo Applying tag $(inputs.params.sha)
+          oc patch catalogsource $(inputs.params.catalogsource) --type=json -p '[{"op": "replace", "path": "/spec/image", "value": "quay.io/open-cluster-management/cmb-custom-registry@$(inputs.params.sha)"}]'

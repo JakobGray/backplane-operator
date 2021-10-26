@@ -1,0 +1,17 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: get-latest-tag
+  annotations:
+    description: |
+      A simple task that gets the last sha
+spec:
+  results:
+    - name: commit
+      description: The precise commit SHA that was fetched by this Task
+  steps:
+    - name: get-latest-tag
+      image: dwdraju/alpine-curl-jq
+      script: |
+        #!/usr/bin/env bash
+        curl -sSX GET "https://quay.io/api/v1/repository/open-cluster-management/cmb-custom-registry/tag/?onlyActiveTags=true&page=1&limit=1"  | jq '.tags[0].manifest_digest'  | sed -e 's|\"||g' | tr -d '\n' | tee $(results.commit.path)
