@@ -6,6 +6,8 @@ package backplane_install_test
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -50,42 +52,42 @@ var _ = Describe("MultiClusterEngine Test Suite", func() {
 		fullTestSuite(mce)
 	})
 
-	Context("target existing namespace", func() {
-		mce := defaultmultiClusterEngine()
-		mce.Spec.TargetNamespace = "existing-ns"
+	// Context("target existing namespace", func() {
+	// 	mce := defaultmultiClusterEngine()
+	// 	mce.Spec.TargetNamespace = "existing-ns"
 
-		It("Should create a namespace to install to", func() {
-			err := k8sClient.Create(ctx, &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{Name: "existing-ns"},
-			})
-			if err != nil {
-				Expect(apierrors.IsAlreadyExists(err)).To(BeTrue())
-			}
-		})
+	// 	It("Should create a namespace to install to", func() {
+	// 		err := k8sClient.Create(ctx, &corev1.Namespace{
+	// 			ObjectMeta: metav1.ObjectMeta{Name: "existing-ns"},
+	// 		})
+	// 		if err != nil {
+	// 			Expect(apierrors.IsAlreadyExists(err)).To(BeTrue())
+	// 		}
+	// 	})
 
-		fullTestSuite(mce)
+	// 	fullTestSuite(mce)
 
-		It("should preserve namespace", func() {
-			createdNS := &corev1.Namespace{}
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "existing-ns"}, createdNS)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, createdNS)).Should(Succeed())
-		})
-	})
+	// 	It("should preserve namespace", func() {
+	// 		createdNS := &corev1.Namespace{}
+	// 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "existing-ns"}, createdNS)).To(Succeed())
+	// 		Expect(k8sClient.Delete(ctx, createdNS)).Should(Succeed())
+	// 	})
+	// })
 
-	Context("target new namespace", func() {
-		mce := defaultmultiClusterEngine()
-		mce.Spec.TargetNamespace = "new-ns"
+	// Context("target new namespace", func() {
+	// 	mce := defaultmultiClusterEngine()
+	// 	mce.Spec.TargetNamespace = "new-ns"
 
-		fullTestSuite(mce)
+	// 	fullTestSuite(mce)
 
-		It("should remove namespace", func() {
-			Eventually(func(g Gomega) {
-				createdNS := &corev1.Namespace{}
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "new-ns"}, createdNS)
-				g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "Expected IsNotFound error, got error:", err)
-			}, time.Minute, interval).Should(Succeed())
-		})
-	})
+	// 	It("should remove namespace", func() {
+	// 		Eventually(func(g Gomega) {
+	// 			createdNS := &corev1.Namespace{}
+	// 			err := k8sClient.Get(ctx, types.NamespacedName{Name: "new-ns"}, createdNS)
+	// 			g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "Expected IsNotFound error, got error:", err)
+	// 		}, time.Minute, interval).Should(Succeed())
+	// 	})
+	// })
 
 })
 
@@ -319,6 +321,11 @@ var webhookTests = func() func() {
 			Expect(k8sClient.Get(ctx, multiClusterEngine, key)).To(Succeed())
 			ns := key.Spec.TargetNamespace
 
+			resourcesDir := os.Getenv("RESOURCE_DIR")
+			if resourcesDir == "" {
+				resourcesDir = "../resources"
+			}
+
 			blockDeletionResources := []struct {
 				Name     string
 				GVK      schema.GroupVersionKind
@@ -333,7 +340,7 @@ var webhookTests = func() func() {
 						Version: "v1alpha1",
 						Kind:    "BareMetalAsset",
 					},
-					Filepath: "../resources/baremetalassets.yaml",
+					Filepath: filepath.Join(resourcesDir, "baremetalassets.yaml"),
 					Expected: "Existing BareMetalAsset resources must first be deleted",
 				},
 				{
@@ -343,7 +350,7 @@ var webhookTests = func() func() {
 						Version: "v1",
 						Kind:    "ManagedClusterList",
 					},
-					Filepath: "../resources/managedcluster.yaml",
+					Filepath: filepath.Join(resourcesDir, "managedcluster.yaml"),
 					Expected: "Existing ManagedCluster resources must first be deleted",
 				},
 			}
