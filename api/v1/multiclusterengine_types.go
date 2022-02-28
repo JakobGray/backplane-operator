@@ -62,19 +62,17 @@ type MultiClusterEngineSpec struct {
 	//+operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Component Configuration",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:hidden"}
 	// +optional
 	ComponentConfig *ComponentConfig `json:"componentConfig,omitempty"`
+
+	// Provides optional configuration for components
+	//+operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Component Configuration",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:hidden"}
+	// +optional
+	Components []ComponentConfig `json:"components,omitempty"`
 }
 
 // ComponentConfig provides optional configuration items for individual components
 type ComponentConfig struct {
-	// +optional
-	ManagedServiceAccount *ManagedServiceAccountConfig `json:"managedServiceAccount,omitempty"`
-}
-
-// Optional configuration items for the managed-serviceaccount component
-type ManagedServiceAccountConfig struct {
-	// Enable managed-serviceaccount component (Tech Preview).
-	// +optional
-	Enable bool `json:"enable,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Config string `json:"config,omitempty"`
 }
 
 // Overrides provides developer overrides for MCE installation

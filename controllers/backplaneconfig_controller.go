@@ -295,7 +295,15 @@ func (r *MultiClusterEngineReconciler) DeploySubcomponents(ctx context.Context, 
 	if err != nil {
 		return result, err
 	}
-	if backplaneConfig.ComponentEnabled(backplanev1.ManagedServiceAccount) {
+	// if multiClusterHub.Enabled("search") {
+	// 	r.Log.Info("Search is enabled")
+	// 	result, err = r.ensureSubscription(multiClusterHub, subscription.Search(multiClusterHub, r.CacheSpec.ImageOverrides))
+	// } else {
+	// 	r.Log.Info("Search is disabled")
+	// 	result, err = r.ensureNoSubscription(multiClusterHub, subscription.Search(multiClusterHub, r.CacheSpec.ImageOverrides))
+	// }
+
+	if backplaneConfig.Enabled("managedservice") {
 		result, err = r.ensureManagedServiceAccount(ctx, backplaneConfig)
 		if err != nil {
 			return result, err

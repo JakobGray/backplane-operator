@@ -18,31 +18,21 @@ limitations under the License.
 
 package v1
 
-const (
-	managedServiceAccountEnabledDefault = false
-)
-
-func (mce *MultiClusterEngine) ComponentEnabled(c ComponentEnabled) bool {
-	if c == ManagedServiceAccount {
-		return mce.managedServiceAccountEnabled()
+func (mce *MultiClusterEngine) hasComponentConfig(s string) bool {
+	for _, c := range mce.Spec.Components {
+		if c.Name == s {
+			return true
+		}
 	}
 	return false
 }
 
-func (mce *MultiClusterEngine) hasComponentConfig() bool {
-	return mce.Spec.ComponentConfig != nil
-}
-
-func (mce *MultiClusterEngine) hasManagedServiceAccountConfig() bool {
-	if !mce.hasComponentConfig() {
-		return false
+func (mce *MultiClusterEngine) Enabled(s string) bool {
+	for _, c := range mce.Spec.Components {
+		if c.Name == s {
+			return c.Config == "enabled"
+		}
 	}
-	return mce.Spec.ComponentConfig.ManagedServiceAccount != nil
-}
 
-func (mce *MultiClusterEngine) managedServiceAccountEnabled() bool {
-	if !mce.hasManagedServiceAccountConfig() {
-		return managedServiceAccountEnabledDefault
-	}
-	return mce.Spec.ComponentConfig.ManagedServiceAccount.Enable
+	return false
 }

@@ -4,7 +4,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.4.1
+    controller-gen.kubebuilder.io/version: v0.6.1
   creationTimestamp: null
   name: multiclusterengines.multicluster.openshift.io
 spec:
@@ -54,16 +54,23 @@ spec:
               componentConfig:
                 description: Provides optional configuration for components
                 properties:
-                  managedServiceAccount:
-                    description: Optional configuration items for the managed-serviceaccount
-                      component
-                    properties:
-                      enable:
-                        description: Enable managed-serviceaccount component (Tech
-                          Preview).
-                        type: boolean
-                    type: object
+                  config:
+                    type: string
+                  name:
+                    type: string
                 type: object
+              components:
+                description: Provides optional configuration for components
+                items:
+                  description: ComponentConfig provides optional configuration items
+                    for individual components
+                  properties:
+                    config:
+                      type: string
+                    name:
+                      type: string
+                  type: object
+                type: array
               imagePullSecret:
                 description: Override pull secret for accessing MultiClusterEngine
                   operand and endpoint images

@@ -474,9 +474,10 @@ var _ = Describe("BackplaneConfig controller", func() {
 					},
 					Spec: v1.MultiClusterEngineSpec{
 						TargetNamespace: DestinationNamespace,
-						ComponentConfig: &v1.ComponentConfig{
-							ManagedServiceAccount: &v1.ManagedServiceAccountConfig{
-								Enable: true,
+						Components: []v1.ComponentConfig{
+							{
+								Name:   "managedservice",
+								Config: "enabled",
 							},
 						},
 					},
