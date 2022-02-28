@@ -115,10 +115,10 @@ test: manifests generate fmt vet envtest ## Run tests.
 build: generate fmt vet ## Build manager binary.
 	go build -ldflags $(LDFLAGS) -o bin/backplane-operator main.go
 
-run: manifests generate fmt vet ## Run a controller from your host.
+run: manifests generate fmt ## Run a controller from your host.
 	ENABLE_WEBHOOKS=false POD_NAMESPACE=backplane-operator-system go run -ldflags $(LDFLAGS) ./main.go 
 
-docker-build: test ## Build docker image with the manager.
+docker-build: ## Build docker image with the manager.
 	docker build --build-arg LDFLAGS=${LDFLAGS} -t ${IMG} .
 
 docker-push: ## Push docker image with the manager.

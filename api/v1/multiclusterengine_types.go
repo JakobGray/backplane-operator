@@ -71,8 +71,8 @@ type MultiClusterEngineSpec struct {
 
 // ComponentConfig provides optional configuration items for individual components
 type ComponentConfig struct {
-	Name   string `json:"name,omitempty"`
-	Config string `json:"config,omitempty"`
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
 }
 
 // Overrides provides developer overrides for MCE installation

@@ -476,8 +476,8 @@ var _ = Describe("BackplaneConfig controller", func() {
 						TargetNamespace: DestinationNamespace,
 						Components: []v1.ComponentConfig{
 							{
-								Name:   "managedservice",
-								Config: "enabled",
+								Name:    "managedservice",
+								Enabled: true,
 							},
 						},
 					},

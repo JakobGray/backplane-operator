@@ -23,6 +23,7 @@ import (
 	e "errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/client-go/util/workqueue"
@@ -50,6 +51,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	backplanev1 "github.com/stolostron/backplane-operator/api/v1"
+	"github.com/stolostron/backplane-operator/pkg/components"
 	"github.com/stolostron/backplane-operator/pkg/foundation"
 	"github.com/stolostron/backplane-operator/pkg/hive"
 	"github.com/stolostron/backplane-operator/pkg/managedservice"
@@ -267,101 +269,210 @@ func (r *MultiClusterEngineReconciler) SetupWithManager(mgr ctrl.Manager) error 
 // DeploySubcomponents ensures all subcomponents exist
 func (r *MultiClusterEngineReconciler) DeploySubcomponents(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
+	r.StatusManager.Reset(string(backplaneConfig.UID))
 
-	chartsDir := alwaysChartsDir
-	// Renders all templates from charts
-	templates, errs := renderer.RenderCharts(chartsDir, backplaneConfig, r.Images)
-	if len(errs) > 0 {
-		for _, err := range errs {
-			log.Info(err.Error())
-		}
-		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
+	log.Info(logComponentConfig(backplaneConfig))
+
+	discovery := components.NewDiscoveryComponent(backplaneConfig, r.Images, r.Client, r.Scheme)
+	if backplaneConfig.Enabled("discovery") {
+		discovery.Enabled = true
+		r.StatusManager.AddComponent(discovery.Status())
+	} else {
+		discovery.Enabled = false
+		r.StatusManager.AddComponent(discovery.Status())
 	}
 
-	// Applies all templates
-	for _, template := range templates {
-		if template.GetKind() == "Deployment" {
-			r.StatusManager.AddComponent(status.DeploymentStatus{
-				NamespacedName: types.NamespacedName{Name: template.GetName(), Namespace: template.GetNamespace()},
-			})
-		}
-		result, err := r.applyTemplate(ctx, backplaneConfig, template)
-		if err != nil {
-			return result, err
-		}
+	hive := components.NewHiveComponent(backplaneConfig, r.Images, r.Client, r.Scheme)
+	if backplaneConfig.Enabled("hive") {
+		hive.Enable()
+		r.StatusManager.AddComponent(hive.Status())
+	} else {
+		hive.Disable()
+		r.StatusManager.AddComponent(hive.Status())
 	}
 
-	result, err := r.ensureCustomResources(ctx, backplaneConfig)
-	if err != nil {
-		return result, err
+	clusterLifecycle := components.NewCLCComponent(backplaneConfig, r.Images, r.Client, r.Scheme)
+	if backplaneConfig.Enabled("clusterLifecycle") {
+		clusterLifecycle.Enable()
+		r.StatusManager.AddComponent(clusterLifecycle.Status())
+	} else {
+		clusterLifecycle.Disable()
+		r.StatusManager.AddComponent(clusterLifecycle.Status())
 	}
-	// if multiClusterHub.Enabled("search") {
-	// 	r.Log.Info("Search is enabled")
-	// 	result, err = r.ensureSubscription(multiClusterHub, subscription.Search(multiClusterHub, r.CacheSpec.ImageOverrides))
-	// } else {
-	// 	r.Log.Info("Search is disabled")
-	// 	result, err = r.ensureNoSubscription(multiClusterHub, subscription.Search(multiClusterHub, r.CacheSpec.ImageOverrides))
+
+	serverFoundation := components.NewServerFoundationComponent(backplaneConfig, r.Images, r.Client, r.Scheme)
+	if backplaneConfig.Enabled("serverFoundation") {
+		serverFoundation.Enable()
+		r.StatusManager.AddComponent(serverFoundation.Status())
+	} else {
+		serverFoundation.Disable()
+		r.StatusManager.AddComponent(serverFoundation.Status())
+	}
+
+	clusterManager := components.NewClusterManagerComponent(backplaneConfig, r.Images, r.Client, r.Scheme)
+	if backplaneConfig.Enabled("clusterManager") {
+		clusterManager.Enable()
+		r.StatusManager.AddComponent(clusterManager.Status())
+	} else {
+		clusterManager.Disable()
+		r.StatusManager.AddComponent(clusterManager.Status())
+	}
+
+	discovery.Reconcile()
+	hive.Reconcile()
+	clusterLifecycle.Reconcile()
+	serverFoundation.Reconcile()
+
+	// components := components.ConfigureComponents(backplaneConfig, r.Images, r.Client, r.Scheme)
+	// for i := range components {
+	// 	err := components[i].Reconcile()
+	// 	if err != nil {
+	// 		return ctrl.Result{}, err
+	// 	}
 	// }
 
-	if backplaneConfig.Enabled("managedservice") {
-		result, err = r.ensureManagedServiceAccount(ctx, backplaneConfig)
-		if err != nil {
-			return result, err
-		}
-	} else {
-		result, err = r.ensureNoManagedServiceAccount(ctx, backplaneConfig)
-		if result != (ctrl.Result{}) {
-			return result, err
-		}
-	}
-
 	return ctrl.Result{}, nil
-}
 
-func (r *MultiClusterEngineReconciler) ensureManagedServiceAccount(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
-	r.StatusManager.RemoveComponent(managedservice.ManagedServiceDisabledStatus(backplaneConfig.Spec.TargetNamespace, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(managedservice.ManagedServiceEnabledStatus(backplaneConfig.Spec.TargetNamespace))
+	// 	chartsDir := alwaysChartsDir
+	// 	// Renders all templates from charts
+	// 	templates, errs := renderer.RenderCharts(chartsDir, backplaneConfig, r.Images)
+	// 	if len(errs) > 0 {
+	// 		for _, err := range errs {
+	// 			log.Info(err.Error())
+	// 		}
+	// 		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
+	// 	}
 
-	log := log.FromContext(ctx)
+	// 	// Applies all templates
+	// 	for _, template := range templates {
+	// 		if template.GetKind() == "Deployment" {
+	// 			r.StatusManager.AddComponent(status.DeploymentStatus{
+	// 				NamespacedName: types.NamespacedName{Name: template.GetName(), Namespace: template.GetNamespace()},
+	// 			})
+	// 		}
+	// 		result, err := r.applyTemplate(ctx, backplaneConfig, template)
+	// 		if err != nil {
+	// 			return result, err
+	// 		}
+	// 	}
 
-	if foundation.CanInstallAddons(ctx, r.Client) {
-		// Render CRD templates
-		crdPath := managedServiceAccountCRDPath
-		crds, errs := renderer.RenderCRDs(crdPath)
-		if len(errs) > 0 {
-			for _, err := range errs {
-				log.Info(err.Error())
-			}
-			return ctrl.Result{RequeueAfter: requeuePeriod}, nil
-		}
+	// 	result, err := r.ensureCustomResources(ctx, backplaneConfig)
+	// 	if err != nil {
+	// 		return result, err
+	// 	}
+	// 	// if multiClusterHub.Enabled("search") {
+	// 	// 	r.Log.Info("Search is enabled")
+	// 	// 	result, err = r.ensureSubscription(multiClusterHub, subscription.Search(multiClusterHub, r.CacheSpec.ImageOverrides))
+	// 	// } else {
+	// 	// 	r.Log.Info("Search is disabled")
+	// 	// 	result, err = r.ensureNoSubscription(multiClusterHub, subscription.Search(multiClusterHub, r.CacheSpec.ImageOverrides))
+	// 	// }
 
-		// Apply all CRDs
-		for _, crd := range crds {
-			result, err := r.applyTemplate(ctx, backplaneConfig, crd)
-			if err != nil {
-				return result, err
-			}
-		}
+	// 	if backplaneConfig.Enabled("discovery") {
+	// 		templates, errs := components.RenderDiscovery(ctx, backplaneConfig, r.Images)
+	// 		if len(errs) > 0 {
+	// 			for _, err := range errs {
+	// 				log.Info(err.Error())
+	// 			}
+	// 			return ctrl.Result{RequeueAfter: requeuePeriod}, nil
+	// 		}
 
-		// Renders all templates from charts
-		chartPath := managedServiceAccountChartDir
-		templates, errs := renderer.RenderChart(chartPath, backplaneConfig, r.Images)
-		if len(errs) > 0 {
-			for _, err := range errs {
-				log.Info(err.Error())
-			}
-			return ctrl.Result{RequeueAfter: requeuePeriod}, nil
-		}
+	// 		r.StatusManager.RemoveComponent(components.DiscoveryDisabledStatus(backplaneConfig.Spec.TargetNamespace, []*unstructured.Unstructured{}))
+	// 		r.StatusManager.AddComponent(components.DiscoveryEnabledStatus(backplaneConfig.Spec.TargetNamespace, templates))
 
-		// Applies all templates
-		for _, template := range templates {
-			result, err := r.applyTemplate(ctx, backplaneConfig, template)
-			if err != nil {
-				return result, err
-			}
-		}
-	}
-	return ctrl.Result{}, nil
+	// 		// Applies all templates
+	// 		for _, template := range templates {
+	// 			result, err := r.applyTemplate(ctx, backplaneConfig, template)
+	// 			if err != nil {
+	// 				return result, err
+	// 			}
+	// 		}
+	// 	} else {
+	// 		// Renders all templates from charts
+	// 		templates, errs := components.RenderDiscovery(ctx, backplaneConfig, r.Images)
+	// 		if len(errs) > 0 {
+	// 			for _, err := range errs {
+	// 				log.Info(err.Error())
+	// 			}
+	// 			return ctrl.Result{RequeueAfter: requeuePeriod}, nil
+	// 		}
+
+	// 		r.StatusManager.RemoveComponent(components.DiscoveryEnabledStatus(backplaneConfig.Spec.TargetNamespace, []*unstructured.Unstructured{}))
+	// 		r.StatusManager.AddComponent(components.DiscoveryDisabledStatus(backplaneConfig.Spec.TargetNamespace, templates))
+
+	// 		// Deletes all templates
+	// 		for _, template := range templates {
+	// 			if template.GetKind() == foundation.ClusterManagementAddonKind && !foundation.CanInstallAddons(ctx, r.Client) {
+	// 				// Can't delete ClusterManagementAddon if Kind doesn't exists
+	// 				continue
+	// 			}
+	// 			result, err := r.deleteTemplate(ctx, backplaneConfig, template)
+	// 			if err != nil {
+	// 				log.Error(err, "Failed to delete MSA template")
+	// 				return result, err
+	// 			}
+	// 		}
+	// 	}
+
+	// 	if backplaneConfig.Enabled("managedservice") {
+	// 		result, err = r.ensureManagedServiceAccount(ctx, backplaneConfig)
+	// 		if err != nil {
+	// 			return result, err
+	// 		}
+	// 	} else {
+	// 		result, err = r.ensureNoManagedServiceAccount(ctx, backplaneConfig)
+	// 		if result != (ctrl.Result{}) {
+	// 			return result, err
+	// 		}
+	// 	}
+
+	// 	return ctrl.Result{}, nil
+	// }
+
+	// func (r *MultiClusterEngineReconciler) ensureManagedServiceAccount(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
+	// 	r.StatusManager.RemoveComponent(managedservice.ManagedServiceDisabledStatus(backplaneConfig.Spec.TargetNamespace, []*unstructured.Unstructured{}))
+	// 	r.StatusManager.AddComponent(managedservice.ManagedServiceEnabledStatus(backplaneConfig.Spec.TargetNamespace))
+
+	// 	log := log.FromContext(ctx)
+
+	// 	if foundation.CanInstallAddons(ctx, r.Client) {
+	// 		// Render CRD templates
+	// 		crdPath := managedServiceAccountCRDPath
+	// 		crds, errs := renderer.RenderCRDs(crdPath)
+	// 		if len(errs) > 0 {
+	// 			for _, err := range errs {
+	// 				log.Info(err.Error())
+	// 			}
+	// 			return ctrl.Result{RequeueAfter: requeuePeriod}, nil
+	// 		}
+
+	// 		// Apply all CRDs
+	// 		for _, crd := range crds {
+	// 			result, err := r.applyTemplate(ctx, backplaneConfig, crd)
+	// 			if err != nil {
+	// 				return result, err
+	// 			}
+	// 		}
+
+	// 		// Renders all templates from charts
+	// 		chartPath := managedServiceAccountChartDir
+	// 		templates, errs := renderer.RenderChart(chartPath, backplaneConfig, r.Images)
+	// 		if len(errs) > 0 {
+	// 			for _, err := range errs {
+	// 				log.Info(err.Error())
+	// 			}
+	// 			return ctrl.Result{RequeueAfter: requeuePeriod}, nil
+	// 		}
+
+	// 		// Applies all templates
+	// 		for _, template := range templates {
+	// 			result, err := r.applyTemplate(ctx, backplaneConfig, template)
+	// 			if err != nil {
+	// 				return result, err
+	// 			}
+	// 		}
+	// 	}
+	// 	return ctrl.Result{}, nil
 }
 
 func (r *MultiClusterEngineReconciler) ensureNoManagedServiceAccount(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
@@ -709,4 +820,26 @@ func (r *MultiClusterEngineReconciler) adoptExistingSubcomponents(ctx context.Co
 		}
 	}
 	return ctrl.Result{}, nil
+}
+
+func logComponentConfig(mce *backplanev1.MultiClusterEngine) string {
+	var sb strings.Builder
+	for _, name := range components.AllComponentNames {
+		match := false
+		for _, c := range mce.Spec.Components {
+			if c.Name == name {
+				match = true
+				if c.Enabled {
+					sb.WriteString(fmt.Sprintf("%s: %s\n", name, "Enabled"))
+				} else {
+					sb.WriteString(fmt.Sprintf("%s: %s\n", name, "Disabled"))
+				}
+				break
+			}
+		}
+		if !match {
+			sb.WriteString(fmt.Sprintf("%s: %s\n", name, "Unknown"))
+		}
+	}
+	return sb.String()
 }

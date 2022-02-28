@@ -30,7 +30,7 @@ func (mce *MultiClusterEngine) hasComponentConfig(s string) bool {
 func (mce *MultiClusterEngine) Enabled(s string) bool {
 	for _, c := range mce.Spec.Components {
 		if c.Name == s {
-			return c.Config == "enabled"
+			return c.Enabled
 		}
 	}
 

@@ -54,10 +54,13 @@ spec:
               componentConfig:
                 description: Provides optional configuration for components
                 properties:
-                  config:
-                    type: string
+                  enabled:
+                    type: boolean
                   name:
                     type: string
+                required:
+                - enabled
+                - name
                 type: object
               components:
                 description: Provides optional configuration for components
@@ -65,10 +68,13 @@ spec:
                   description: ComponentConfig provides optional configuration items
                     for individual components
                   properties:
-                    config:
-                      type: string
+                    enabled:
+                      type: boolean
                     name:
                       type: string
+                  required:
+                  - enabled
+                  - name
                   type: object
                 type: array
               imagePullSecret:
