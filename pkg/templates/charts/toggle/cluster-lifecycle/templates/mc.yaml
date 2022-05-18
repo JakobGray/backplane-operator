@@ -1,0 +1,12 @@
+apiVersion: cluster.open-cluster-management.io/v1
+kind: ManagedCluster
+metadata:
+  name: testmc56
+  labels:
+    local-cluster: "false"
+    cloud: auto-detect
+    vendor: auto-detect
+    clusterID: 8ejnp9e2-21oabm97-7yp2-y1bz-eb32-qrn41avzc4
+spec:
+  hubAcceptsClient: true
+  leaseDurationSeconds: 60
