@@ -36,6 +36,7 @@ const (
 //+kubebuilder:rbac:groups=addon.open-cluster-management.io,resources=clustermanagementaddons,verbs=create;get;list;update;patch;watch;delete
 //+kubebuilder:rbac:groups=console.openshift.io,resources=consoleplugins;consolequickstarts,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;create;update;list;watch;delete;patch
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=managedclusters,verbs=get;create;update;list;watch;delete;patch
 
 var resources = []string{
 	"APIService",
@@ -47,6 +48,7 @@ var resources = []string{
 	"ConsoleQuickStart",
 	"CustomResourceDefinition",
 	"Deployment",
+	"ManagedCluster",
 	"MutatingWebhookConfiguration",
 	"Role",
 	"RoleBinding",
