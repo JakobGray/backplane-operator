@@ -244,36 +244,3 @@ func TestRender(t *testing.T) {
 	os.Unsetenv("POD_NAMESPACE")
 
 }
-
-func TestRenderCRDs(t *testing.T) {
-	tests := []struct {
-		name   string
-		crdDir string
-		want   []error
-	}{
-		{
-			name:   "Render CRDs directory",
-			crdDir: crdsDir,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, errs := RenderCRDs(tt.crdDir)
-			if errs != nil && len(errs) > 1 {
-				t.Errorf("RenderCRDs() got = %v, want %v", errs, nil)
-			}
-
-			for _, u := range got {
-				kind := "CustomResourceDefinition"
-				apiVersion := "apiextensions.k8s.io/v1"
-				if u.GetKind() != kind {
-					t.Errorf("RenderCRDs() got Kind = %v, want Kind %v", errs, kind)
-				}
-
-				if u.GetAPIVersion() != apiVersion {
-					t.Errorf("RenderCRDs() got apiversion = %v, want apiversion %v", errs, apiVersion)
-				}
-			}
-		})
-	}
-}

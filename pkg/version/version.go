@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+
+	"github.com/Masterminds/semver"
 )
 
 // Version is the semver version the operator is reconciling towards
@@ -44,4 +46,19 @@ func Get() Info {
 		Compiler:     runtime.Compiler,
 		Platform:     fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
 	}
+}
+
+// Older returns true if the version is older than this package's running version
+func Older(v string) (bool, error) {
+	operatorVersion, err := semver.NewVersion(Version)
+	if err != nil {
+		return false, fmt.Errorf("could not parse operator version into semver version: %s", Version)
+	}
+
+	currentVersion, err := semver.NewVersion(v)
+	if err != nil {
+		return false, fmt.Errorf("could not parse supplied version into semver version: %s", v)
+	}
+
+	return operatorVersion.GreaterThan(currentVersion), nil
 }

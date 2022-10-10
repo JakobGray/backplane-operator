@@ -7,6 +7,7 @@ import (
 	"os"
 
 	backplanev1 "github.com/stolostron/backplane-operator/api/v1"
+	"github.com/stolostron/backplane-operator/pkg/version"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -57,6 +58,29 @@ func AddBackplaneConfigLabels(u client.Object, name string) {
 	labels["backplaneconfig.name"] = name
 
 	u.SetLabels(labels)
+}
+
+// returns true if the mce version annotation is an older version than the operator version
+// or if the version annotation is unset
+func VersionOlder(obj client.Object) (bool, error) {
+	a := obj.GetAnnotations()
+	if a == nil || a[AnnotationMCEVersion] == "" {
+		return true, nil
+	}
+	older, err := version.Older(a[AnnotationMCEVersion])
+	if err != nil {
+		return false, err
+	}
+	return older, nil
+}
+
+func SetOperatorVersion(obj client.Object) {
+	annotations := make(map[string]string)
+	for key, value := range obj.GetAnnotations() {
+		annotations[key] = value
+	}
+	annotations[AnnotationMCEVersion] = version.Version
+	obj.SetAnnotations(annotations)
 }
 
 // CoreToUnstructured converts a Core Kube resource to unstructured

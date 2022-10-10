@@ -29,8 +29,8 @@ import (
 	"time"
 
 	renderer "github.com/stolostron/backplane-operator/pkg/rendering"
+	"github.com/stolostron/backplane-operator/pkg/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -143,16 +143,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Render CRD templates
-	crdsDir := crdsDir
-	crds, errs := renderer.RenderCRDs(crdsDir)
-	if len(errs) > 0 {
-		for _, err := range errs {
-			setupLog.Info(err.Error())
-		}
+	// Deploy latest version CRDs
+	crds, err := renderer.RenderCRDs()
+	if err != nil {
+		setupLog.Error(err, "failed to render CRDs")
 		os.Exit(1)
 	}
-
 	for _, crd := range crds {
 		err := ensureCRD(mgr, crd)
 		if err != nil {
@@ -191,35 +187,41 @@ func main() {
 	}
 }
 
-func ensureCRD(mgr ctrl.Manager, crd *unstructured.Unstructured) error {
+func ensureCRD(mgr ctrl.Manager, crd *apixv1.CustomResourceDefinition) error {
 	ctx := context.Background()
 	maxAttempts := 5
 	go func() {
 		for i := 0; i < maxAttempts; i++ {
-			setupLog.Info(fmt.Sprintf("Ensuring '%s' CRD exists", crd.GetName()))
-			existingCRD := &unstructured.Unstructured{}
-			existingCRD.SetGroupVersionKind(crd.GroupVersionKind())
-			err := mgr.GetClient().Get(ctx, types.NamespacedName{Name: crd.GetName()}, existingCRD)
-			if err != nil && errors.IsNotFound(err) {
-				// CRD not found. Create and return
+			existing := &apixv1.CustomResourceDefinition{}
+			err := mgr.GetClient().Get(ctx, types.NamespacedName{Name: crd.GetName()}, existing)
+			if err != nil && !errors.IsNotFound(err) {
+				setupLog.Error(err, fmt.Sprintf("Error getting CRD '%s'", crd.GetName()))
+			} else if errors.IsNotFound(err) {
+				setupLog.Info(fmt.Sprintf("Installing CRD '%s'", crd.GetName()))
 				err = mgr.GetClient().Create(ctx, crd)
 				if err != nil {
-					setupLog.Error(err, fmt.Sprintf("Error creating '%s' CRD", crd.GetName()))
+					setupLog.Error(err, fmt.Sprintf("Error creating CRD '%s'", crd.GetName()))
 					time.Sleep(5 * time.Second)
 					continue
 				}
 				return
-			} else if err != nil {
-				setupLog.Error(err, fmt.Sprintf("Error getting '%s' CRD", crd.GetName()))
-			} else if err == nil {
+			} else {
 				// CRD already exists. Update and return
-				setupLog.Info(fmt.Sprintf("'%s' CRD already exists. Updating.", crd.GetName()))
-				crd.SetResourceVersion(existingCRD.GetResourceVersion())
-				err = mgr.GetClient().Update(ctx, crd)
+				older, err := utils.VersionOlder(existing)
 				if err != nil {
-					setupLog.Error(err, fmt.Sprintf("Error updating '%s' CRD", crd.GetName()))
-					time.Sleep(5 * time.Second)
-					continue
+					setupLog.Error(err, fmt.Sprintf("Error inspecting CRD '%s'", crd.GetName()))
+				}
+				if older {
+					crd.Annotations = existing.Annotations
+					crd.Labels = existing.Labels
+					utils.SetOperatorVersion(crd)
+					setupLog.Info(fmt.Sprintf("Updating CRD '%s'", crd.GetName()))
+					err = mgr.GetClient().Update(ctx, crd)
+					if err != nil {
+						setupLog.Error(err, fmt.Sprintf("Error updating CRD '%s'", crd.GetName()))
+						time.Sleep(5 * time.Second)
+						continue
+					}
 				}
 				return
 			}

@@ -17,6 +17,8 @@ var (
 	AnnotationImageRepo = "imageRepository"
 	// AnnotationImageOverridesCM identifies a configmap name containing an image override mapping
 	AnnotationImageOverridesCM = "imageOverridesCM"
+	// AnnotationMCEVersion identifies the MCE operator version at which the resource was applied
+	AnnotationMCEVersion = "multiclusterengine.version"
 )
 
 // IsPaused returns true if the multiclusterengine instance is labeled as paused, and false otherwise

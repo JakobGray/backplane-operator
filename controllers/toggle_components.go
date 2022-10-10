@@ -105,23 +105,23 @@ func (r *MultiClusterEngineReconciler) ensureManagedServiceAccount(ctx context.C
 	log := log.FromContext(ctx)
 
 	if foundation.CanInstallAddons(ctx, r.Client) {
-		// Render CRD templates
-		crdPath := toggle.ManagedServiceAccountCRDPath
-		crds, errs := renderer.RenderCRDs(crdPath)
-		if len(errs) > 0 {
-			for _, err := range errs {
-				log.Info(err.Error())
-			}
-			return ctrl.Result{RequeueAfter: requeuePeriod}, nil
-		}
+		// // Render CRD templates
+		// crdPath := toggle.ManagedServiceAccountCRDPath
+		// crds, errs := renderer.RenderCRDs(crdPath)
+		// if len(errs) > 0 {
+		// 	for _, err := range errs {
+		// 		log.Info(err.Error())
+		// 	}
+		// 	return ctrl.Result{RequeueAfter: requeuePeriod}, nil
+		// }
 
-		// Apply all CRDs
-		for _, crd := range crds {
-			result, err := r.applyTemplate(ctx, backplaneConfig, crd)
-			if err != nil {
-				return result, err
-			}
-		}
+		// // Apply all CRDs
+		// for _, crd := range crds {
+		// 	result, err := r.applyTemplate(ctx, backplaneConfig, crd)
+		// 	if err != nil {
+		// 		return result, err
+		// 	}
+		// }
 
 		// Renders all templates from charts
 		chartPath := toggle.ManagedServiceAccountChartDir
