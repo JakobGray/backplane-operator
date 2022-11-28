@@ -245,7 +245,7 @@ func (r *MultiClusterEngineReconciler) removePluginFromConsoleResource(ctx conte
 
 	log := log.FromContext(ctx)
 	console := &operatorv1.Console{}
-	// If trying to check this resource from the CLI run - `oc get consoles.operator.openshift.io cluster`.
+	// If trying to check this resource from the CLI run - `or`.
 	// The default `console` is not the correct resource
 	err := r.Client.Get(ctx, types.NamespacedName{Name: "cluster"}, console)
 	if err != nil {
@@ -762,7 +762,7 @@ func (r *MultiClusterEngineReconciler) reconcileHypershiftLocalHosting(ctx conte
 		return r.removeHypershiftLocalHosting(ctx, mce)
 	}
 
-	if !mce.Enabled(backplanev1.HyperShift) { // if !backplaneConfig.Enabled(backplanev1.LocalCluster)
+	if !mce.Enabled(backplanev1.HyperShift) {
 		// report that hypershift must be enabled
 		r.StatusManager.AddComponent(status.NewDisabledStatus(
 			types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
@@ -1074,4 +1074,12 @@ func (r *MultiClusterEngineReconciler) ensureNoLocalCluster(ctx context.Context,
 	r.StatusManager.AddCondition(condition)
 	log.Info(msg)
 	return ctrl.Result{RequeueAfter: requeuePeriod}, nil
+}
+
+// prereqCRD returns an error if CRD Kind is not available on the cluster
+func prereqCRD(ctx context.Context, client client.Client, gvk schema.GroupVersionKind) error {
+	_, err := client.RESTMapper().RESTMapping(gvk.GroupKind(), gvk.Version)
+	// _, err := mgr.GetRESTMapper().RESTMapping(managedClusterGVK.GroupKind(), managedClusterGVK.Version)
+	// CanInstallAddons returns true if addons can be installed
+	return err
 }

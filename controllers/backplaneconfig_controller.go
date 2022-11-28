@@ -373,7 +373,6 @@ func (r *MultiClusterEngineReconciler) createTrustBundleConfigmap(ctx context.Co
 		Name:      trustBundleName,
 		Namespace: trustBundleNamespace,
 	}
-	log.Info("using trust bundle configmap %s/%s", trustBundleNamespace, trustBundleName)
 
 	// Check if configmap exists
 	cm := &corev1.ConfigMap{}
@@ -404,6 +403,7 @@ func (r *MultiClusterEngineReconciler) createTrustBundleConfigmap(ctx context.Co
 			trustBundleName,
 		)
 	}
+	log.Info(fmt.Sprintf("creating trust bundle configmap %s: %s", trustBundleNamespace, trustBundleName))
 	err = r.Client.Create(ctx, cm)
 	if err != nil {
 		// Error creating configmap
