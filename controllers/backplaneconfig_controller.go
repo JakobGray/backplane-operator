@@ -41,6 +41,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -695,7 +697,7 @@ func (r *MultiClusterEngineReconciler) applyTemplate(ctx context.Context, backpl
 		force := true
 		err = r.Client.Patch(ctx, template, client.Apply, &client.PatchOptions{Force: &force, FieldManager: "backplane-operator"})
 		if err != nil {
-			return ctrl.Result{}, pkgerrors.Wrapf(err, "error applying object Name: %s Kind: %s", template.GetName(), template.GetKind())
+			return ctrl.Result{}, fmt.Errorf("error applying object Name: %s Kind: %s Error: %w", template.GetName(), template.GetKind(), err)
 		}
 	}
 	return ctrl.Result{}, nil
@@ -706,8 +708,7 @@ func (r *MultiClusterEngineReconciler) applyTemplate(ctx context.Context, backpl
 func (r *MultiClusterEngineReconciler) deleteTemplate(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine, template *unstructured.Unstructured) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	err := r.Client.Get(ctx, types.NamespacedName{Name: template.GetName(), Namespace: template.GetNamespace()}, template)
-
-	if err != nil && apierrors.IsNotFound(err) {
+	if err != nil && (apierrors.IsNotFound(err) || apimeta.IsNoMatchError(err)) {
 		return ctrl.Result{}, nil
 	}
 

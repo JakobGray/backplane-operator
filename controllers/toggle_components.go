@@ -19,7 +19,9 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -814,6 +816,26 @@ func (r *MultiClusterEngineReconciler) applyHypershiftLocalHosting(ctx context.C
 	}
 	result, err := r.applyTemplate(ctx, backplaneConfig, addon)
 	if err != nil {
+		if apimeta.IsNoMatchError(errors.Unwrap(err)) {
+			// addon CRD does not yet exist. Replace status.
+			r.StatusManager.RemoveComponent(status.ManagedClusterAddOnStatus{
+				NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
+			})
+			r.StatusManager.AddComponent(status.StaticStatus{
+				NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
+				Kind:           addon.GetKind(),
+				Condition: backplanev1.ComponentCondition{
+					Type:      "Available",
+					Name:      addon.GetName(),
+					Status:    metav1.ConditionFalse,
+					Reason:    status.WaitingForResourceReason,
+					Kind:      addon.GetKind(),
+					Available: false,
+					Message:   "Waiting for ManagedClusterAddOn CRD to be available",
+				},
+			})
+			return ctrl.Result{RequeueAfter: requeuePeriod}, nil
+		}
 		return result, err
 	}
 	return ctrl.Result{}, nil
@@ -850,13 +872,34 @@ func (r *MultiClusterEngineReconciler) ensureClusterProxyAddon(ctx context.Conte
 	}
 
 	// Applies all templates
+	missingCRDErrorOccured := false
 	for _, template := range templates {
 		result, err := r.applyTemplate(ctx, backplaneConfig, template)
 		if err != nil {
-			return result, err
+			if apimeta.IsNoMatchError(errors.Unwrap(err)) {
+				missingCRDErrorOccured = true
+				r.StatusManager.AddComponent(status.StaticStatus{
+					NamespacedName: types.NamespacedName{Name: "cluster-proxy-addon", Namespace: backplaneConfig.Spec.TargetNamespace},
+					Kind:           "Component",
+					Condition: backplanev1.ComponentCondition{
+						Type:      "Available",
+						Name:      "cluster-proxy-addon",
+						Status:    metav1.ConditionFalse,
+						Reason:    status.WaitingForResourceReason,
+						Kind:      "Component",
+						Available: false,
+						Message:   "Waiting for ClusterManagementAddOn CRD to be available",
+					},
+				})
+			} else {
+				return result, err
+			}
 		}
 	}
 
+	if missingCRDErrorOccured {
+		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -965,6 +1008,23 @@ func (r *MultiClusterEngineReconciler) ensureLocalCluster(ctx context.Context, m
 			log.Error(err, "Failed to get local cluster namespace")
 			return ctrl.Result{}, err
 		}
+	} else if apimeta.IsNoMatchError(err) {
+		// managedCluster CRD does not yet exist. Replace status.
+		r.StatusManager.RemoveComponent(lcs)
+		r.StatusManager.AddComponent(status.StaticStatus{
+			NamespacedName: types.NamespacedName{Name: "local-cluster", Namespace: mce.Spec.TargetNamespace},
+			Kind:           "local-cluster",
+			Condition: backplanev1.ComponentCondition{
+				Type:      "Available",
+				Name:      "local-cluster",
+				Status:    metav1.ConditionFalse,
+				Reason:    status.WaitingForResourceReason,
+				Kind:      "local-cluster",
+				Available: false,
+				Message:   "Waiting for ManagedCluster CRD to be available",
+			},
+		})
+		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 	} else if err != nil {
 		log.Error(err, "Failed to get ManagedCluster CR")
 		return ctrl.Result{RequeueAfter: requeuePeriod}, err
@@ -1015,10 +1075,9 @@ func (r *MultiClusterEngineReconciler) ensureNoLocalCluster(ctx context.Context,
 	log.Info("Check if ManagedCluster CR exists")
 	managedCluster := utils.NewManagedCluster()
 	err := r.Client.Get(ctx, types.NamespacedName{Name: utils.LocalClusterName}, managedCluster)
-	if apierrors.IsNotFound(err) {
-		log.Info("ManagedCluster CR has been removed")
+	if apierrors.IsNotFound(err) || apimeta.IsNoMatchError(err) {
+		log.Info("ManagedCluster CR is not present")
 	} else if err != nil {
-		log.Error(err, "Failed to get ManagedCluster CR")
 		return ctrl.Result{RequeueAfter: requeuePeriod}, err
 	} else {
 		log.Info("Deleting ManagedCluster CR")
@@ -1076,10 +1135,8 @@ func (r *MultiClusterEngineReconciler) ensureNoLocalCluster(ctx context.Context,
 	return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 }
 
-// prereqCRD returns an error if CRD Kind is not available on the cluster
-func prereqCRD(ctx context.Context, client client.Client, gvk schema.GroupVersionKind) error {
+// prereqCRD returns an error if the GVK is not available on the cluster
+func prereqGVK(ctx context.Context, client client.Client, gvk schema.GroupVersionKind) error {
 	_, err := client.RESTMapper().RESTMapping(gvk.GroupKind(), gvk.Version)
-	// _, err := mgr.GetRESTMapper().RESTMapping(managedClusterGVK.GroupKind(), managedClusterGVK.Version)
-	// CanInstallAddons returns true if addons can be installed
 	return err
 }
