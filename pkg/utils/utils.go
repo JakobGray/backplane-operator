@@ -4,10 +4,14 @@ package utils
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 
+	"github.com/Masterminds/semver"
+	configv1 "github.com/openshift/api/config/v1"
 	backplanev1 "github.com/stolostron/backplane-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -278,4 +282,58 @@ func GetHubType(mce *backplanev1.MultiClusterEngine) string {
 			return string(HubTypeMCE)
 		}
 	}
+}
+
+type ClusterConfig struct {
+	ConsoleEnabled bool
+	ClusterVersion string
+}
+
+func GetClusterConfig(cv *configv1.ClusterVersion) (ClusterConfig, error) {
+	if val, ok := os.LookupEnv("UNIT_TEST"); ok && val == "true" {
+		if _, exists := os.LookupEnv("ACM_HUB_OCP_VERSION"); exists {
+			return ClusterConfig{
+				ClusterVersion: os.Getenv("ACM_HUB_OCP_VERSION"),
+				ConsoleEnabled: true,
+			}, nil
+		}
+		return ClusterConfig{
+			ClusterVersion: "4.99.99",
+			ConsoleEnabled: true,
+		}, nil
+	}
+
+	blank := ClusterConfig{}
+
+	// Get openshift version
+	if len(cv.Status.History) == 0 {
+		return blank, fmt.Errorf("Failed to detect status in clusterversion.status.history")
+	}
+	ocpVersion := cv.Status.History[0].Version
+
+	// Check if console disabled
+	semverVersion, err := semver.NewVersion(ocpVersion)
+	if err != nil {
+		return blank, fmt.Errorf("failed to convert ocp version to semver compatible value: %w", err)
+	}
+	// OCP Console can only be disabled in OCP 4.12+
+	constraint, err := semver.NewConstraint(">= 4.12.0-0")
+	consoleEnabled := false
+	if err != nil {
+		return blank, fmt.Errorf("failed to set ocp version constraint: %w", err)
+	}
+	if !constraint.Check(semverVersion) {
+		consoleEnabled = true
+	} else {
+		for _, v := range cv.Status.Capabilities.EnabledCapabilities {
+			if v == "Console" {
+				consoleEnabled = true
+			}
+		}
+	}
+
+	return ClusterConfig{
+		ClusterVersion: ocpVersion,
+		ConsoleEnabled: consoleEnabled,
+	}, nil
 }

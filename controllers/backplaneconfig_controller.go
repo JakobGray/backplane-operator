@@ -175,6 +175,30 @@ func (r *MultiClusterEngineReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return r.HostedReconcile(ctx, backplaneConfig)
 	}
 
+	// ocpConsole, err := r.CheckConsole(ctx)
+	// if err != nil {
+	// 	return ctrl.Result{RequeueAfter: requeuePeriod}, err
+	// }
+	// currentOCPVersion, err := r.getClusterVersion(ctx)
+	// if err != nil {
+	// 	return ctrl.Result{}, fmt.Errorf("failed to detect clusterversion: %w", err)
+	// }
+	clusterVersion := &configv1.ClusterVersion{}
+	err = r.Client.Get(ctx, types.NamespacedName{Name: "version"}, clusterVersion)
+	if err != nil {
+		log.Error(err, "Failed to find clusterversion")
+		r.StatusManager.AddCondition(status.NewCondition(backplanev1.MultiClusterEngineProgressing, metav1.ConditionFalse, status.RequirementsNotMetReason, err.Error()))
+	}
+	clusterConfig, err := utils.GetClusterConfig(clusterVersion)
+	if err != nil {
+		log.Error(err, "Failed to parse clusterversion")
+		r.StatusManager.AddCondition(status.NewCondition(backplanev1.MultiClusterEngineProgressing, metav1.ConditionFalse, status.RequirementsNotMetReason, err.Error()))
+	}
+
+	r.registerComponentStatuses(backplaneConfig, clusterConfig)
+
+	// r.StatusManager.OverwriteComponent(LocalClusterComponent{}.GetStatusReporter(formattedMCE))
+
 	defer func() {
 		log.Info("Updating status")
 		backplaneConfig.Status = r.StatusManager.ReportStatus(*backplaneConfig)
@@ -1249,4 +1273,25 @@ func (r *MultiClusterEngineReconciler) getClusterIngressDomain(ctx context.Conte
 		return "", fmt.Errorf("Domain not found or empty in Ingress")
 	}
 	return clusterIngress.Spec.Domain, nil
+}
+
+func (r *MultiClusterEngineReconciler) registerComponentStatuses(mce *backplanev1.MultiClusterEngine, cc utils.ClusterConfig) {
+	m := mce.DeepCopy()
+	_ = utils.SetDefaultComponents(m)
+	_ = utils.DeduplicateComponents(m)
+
+	r.StatusManager.AddComponent(DiscoveryComponent{}.GetStatusReporter(m, cc))
+	r.StatusManager.AddComponent(ConsoleComponent{}.GetStatusReporter(m, cc))
+	r.StatusManager.AddComponent(ManagedServiceAccountComponent{}.GetStatusReporter(m, cc))
+	r.StatusManager.AddComponent(HiveComponent{}.GetStatusReporter(m, cc))
+	r.StatusManager.AddComponent(AssistedServiceComponent{}.GetStatusReporter(m, cc))
+	r.StatusManager.AddComponent(ServerFoundationComponent{}.GetStatusReporter(m, cc))
+	r.StatusManager.AddComponent(ClusterLifecycleComponent{}.GetStatusReporter(m, cc))
+	r.StatusManager.AddComponent(ClusterManagerComponent{}.GetStatusReporter(m, cc))
+	r.StatusManager.AddComponent(HypershiftComponent{}.GetStatusReporter(m, cc))
+	r.StatusManager.AddComponent(HypershiftLocalHostingComponent{}.GetStatusReporter(m, cc))
+	r.StatusManager.AddComponent(ClusterProxyAddonComponent{}.GetStatusReporter(m, cc))
+	r.StatusManager.AddComponent(LocalClusterComponent{}.GetStatusReporter(m, cc))
+
+	return
 }

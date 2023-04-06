@@ -40,10 +40,6 @@ var clusterManagementAddOnGVK = schema.GroupVersionKind{
 }
 
 func (r *MultiClusterEngineReconciler) ensureConsoleMCE(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
-	namespacedName := types.NamespacedName{Name: "console-mce-console", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
-
 	log := log.FromContext(ctx)
 	templates, errs := renderer.RenderChart(toggle.ConsoleMCEChartsDir, backplaneConfig, r.Images)
 	if len(errs) > 0 {
@@ -63,6 +59,8 @@ func (r *MultiClusterEngineReconciler) ensureConsoleMCE(ctx context.Context, bac
 
 	// Check console-mce deployment health before adding plugin
 	consoleDeployment := &appsv1.Deployment{}
+	namespacedName := types.NamespacedName{Name: "console-mce-console", Namespace: backplaneConfig.Spec.TargetNamespace}
+
 	err := r.Client.Get(ctx, namespacedName, consoleDeployment)
 	if err != nil {
 		log.Info("Failed to get console-mce deployment for addon. Requeuing.")
@@ -80,16 +78,17 @@ func (r *MultiClusterEngineReconciler) ensureConsoleMCE(ctx context.Context, bac
 
 func (r *MultiClusterEngineReconciler) ensureNoConsoleMCE(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine, ocpConsole bool) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
-	namespacedName := types.NamespacedName{Name: "console-mce-console", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName := types.NamespacedName{Name: "console-mce-console", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
 	if !ocpConsole {
 		// If Openshift console is disabled then no cleanup to be done, because MCE console cannot be installed
-		r.StatusManager.AddComponent(status.ConsoleUnavailableStatus{
-			NamespacedName: types.NamespacedName{Name: "console-mce-console", Namespace: backplaneConfig.Spec.TargetNamespace},
-		})
+		// r.StatusManager.AddComponent(status.ConsoleUnavailableStatus{
+		// 	NamespacedName: types.NamespacedName{Name: "console-mce-console", Namespace: backplaneConfig.Spec.TargetNamespace},
+		// })
+
 		return ctrl.Result{}, nil
 	}
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
 
 	result, err := r.removePluginFromConsoleResource(ctx, backplaneConfig)
 	if err != nil {
@@ -117,9 +116,9 @@ func (r *MultiClusterEngineReconciler) ensureNoConsoleMCE(ctx context.Context, b
 }
 
 func (r *MultiClusterEngineReconciler) ensureManagedServiceAccount(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(types.NamespacedName{Name: "managedservice", Namespace: backplaneConfig.Spec.TargetNamespace}, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(types.NamespacedName{Name: "managed-serviceaccount-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}))
-	r.StatusManager.AddComponent(status.NewPresentStatus(types.NamespacedName{Name: "managed-serviceaccount"}, clusterManagementAddOnGVK))
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(types.NamespacedName{Name: "managedservice", Namespace: backplaneConfig.Spec.TargetNamespace}, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(types.NamespacedName{Name: "managed-serviceaccount-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}))
+	// r.StatusManager.AddComponent(status.NewPresentStatus(types.NamespacedName{Name: "managed-serviceaccount"}, clusterManagementAddOnGVK))
 
 	log := log.FromContext(ctx)
 
@@ -161,7 +160,8 @@ func (r *MultiClusterEngineReconciler) ensureManagedServiceAccount(ctx context.C
 				log.Info("Couldn't apply template for managed-serviceaccount due to missing CRD", "error is", err.Error())
 
 				missingCRDErrorOccured = true
-				r.StatusManager.AddComponent(clusterManagementAddOnNotFoundStatus("managed-serviceaccount", backplaneConfig.Spec.TargetNamespace))
+				// r.StatusManager.AddComponent(clusterManagementAddOnNotFoundStatus("managed-serviceaccount", backplaneConfig.Spec.TargetNamespace))
+				r.StatusManager.OverwriteComponent(crdNotFoundStatus(backplanev1.ManagedServiceAccount, "ClusterManagementAddOn"))
 			} else {
 				return result, err
 			}
@@ -187,8 +187,8 @@ func (r *MultiClusterEngineReconciler) ensureNoManagedServiceAccount(ctx context
 		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 	}
 
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(types.NamespacedName{Name: "managed-serviceaccount-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(types.NamespacedName{Name: "managedservice", Namespace: backplaneConfig.Spec.TargetNamespace}, []*unstructured.Unstructured{}))
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(types.NamespacedName{Name: "managed-serviceaccount-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(types.NamespacedName{Name: "managedservice", Namespace: backplaneConfig.Spec.TargetNamespace}, []*unstructured.Unstructured{}))
 
 	// Deletes all templates
 	for _, template := range templates {
@@ -293,9 +293,9 @@ func (r *MultiClusterEngineReconciler) removePluginFromConsoleResource(ctx conte
 }
 
 func (r *MultiClusterEngineReconciler) ensureDiscovery(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
-	namespacedName := types.NamespacedName{Name: "discovery-operator", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName := types.NamespacedName{Name: "discovery-operator", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
 
 	log := log.FromContext(ctx)
 
@@ -320,7 +320,7 @@ func (r *MultiClusterEngineReconciler) ensureDiscovery(ctx context.Context, back
 
 func (r *MultiClusterEngineReconciler) ensureNoDiscovery(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
-	namespacedName := types.NamespacedName{Name: "discovery-operator", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// namespacedName := types.NamespacedName{Name: "discovery-operator", Namespace: backplaneConfig.Spec.TargetNamespace}
 
 	// Renders all templates from charts
 	templates, errs := renderer.RenderChart(toggle.DiscoveryChartDir, backplaneConfig, r.Images)
@@ -331,8 +331,8 @@ func (r *MultiClusterEngineReconciler) ensureNoDiscovery(ctx context.Context, ba
 		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 	}
 
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
 
 	// Deletes all templates
 	for _, template := range templates {
@@ -346,9 +346,9 @@ func (r *MultiClusterEngineReconciler) ensureNoDiscovery(ctx context.Context, ba
 }
 
 func (r *MultiClusterEngineReconciler) ensureHive(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
-	namespacedName := types.NamespacedName{Name: "hive-operator", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName := types.NamespacedName{Name: "hive-operator", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
 
 	log := log.FromContext(ctx)
 
@@ -383,7 +383,7 @@ func (r *MultiClusterEngineReconciler) ensureHive(ctx context.Context, backplane
 
 func (r *MultiClusterEngineReconciler) ensureNoHive(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
-	namespacedName := types.NamespacedName{Name: "hive-operator", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// namespacedName := types.NamespacedName{Name: "hive-operator", Namespace: backplaneConfig.Spec.TargetNamespace}
 
 	// Renders all templates from charts
 	templates, errs := renderer.RenderChart(toggle.HiveChartDir, backplaneConfig, r.Images)
@@ -394,8 +394,8 @@ func (r *MultiClusterEngineReconciler) ensureNoHive(ctx context.Context, backpla
 		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 	}
 
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
 
 	// Delete hivconfig
 	hiveConfig := hive.HiveConfig(backplaneConfig)
@@ -426,9 +426,9 @@ func (r *MultiClusterEngineReconciler) ensureAssistedService(ctx context.Context
 		targetNamespace = backplaneConfig.Spec.Overrides.InfrastructureCustomNamespace
 	}
 
-	namespacedName := types.NamespacedName{Name: "infrastructure-operator", Namespace: targetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName := types.NamespacedName{Name: "infrastructure-operator", Namespace: targetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
 
 	log := log.FromContext(ctx)
 
@@ -456,7 +456,7 @@ func (r *MultiClusterEngineReconciler) ensureNoAssistedService(ctx context.Conte
 	if backplaneConfig.Spec.Overrides != nil && backplaneConfig.Spec.Overrides.InfrastructureCustomNamespace != "" {
 		targetNamespace = backplaneConfig.Spec.Overrides.InfrastructureCustomNamespace
 	}
-	namespacedName := types.NamespacedName{Name: "infrastructure-operator", Namespace: targetNamespace}
+	// namespacedName := types.NamespacedName{Name: "infrastructure-operator", Namespace: targetNamespace}
 
 	log := log.FromContext(ctx)
 
@@ -469,8 +469,8 @@ func (r *MultiClusterEngineReconciler) ensureNoAssistedService(ctx context.Conte
 		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 	}
 
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
 
 	// Deletes all templates
 	for _, template := range templates {
@@ -484,15 +484,15 @@ func (r *MultiClusterEngineReconciler) ensureNoAssistedService(ctx context.Conte
 }
 
 func (r *MultiClusterEngineReconciler) ensureServerFoundation(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
-	namespacedName := types.NamespacedName{Name: "ocm-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
-	namespacedName = types.NamespacedName{Name: "ocm-proxyserver", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
-	namespacedName = types.NamespacedName{Name: "ocm-webhook", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName := types.NamespacedName{Name: "ocm-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName = types.NamespacedName{Name: "ocm-proxyserver", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName = types.NamespacedName{Name: "ocm-webhook", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
 
 	log := log.FromContext(ctx)
 
@@ -527,15 +527,15 @@ func (r *MultiClusterEngineReconciler) ensureNoServerFoundation(ctx context.Cont
 		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 	}
 
-	namespacedName := types.NamespacedName{Name: "ocm-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	namespacedName = types.NamespacedName{Name: "ocm-proxyserver", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	namespacedName = types.NamespacedName{Name: "ocm-webhook", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// namespacedName := types.NamespacedName{Name: "ocm-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// namespacedName = types.NamespacedName{Name: "ocm-proxyserver", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// namespacedName = types.NamespacedName{Name: "ocm-webhook", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
 
 	// Deletes all templates
 	for _, template := range templates {
@@ -549,21 +549,21 @@ func (r *MultiClusterEngineReconciler) ensureNoServerFoundation(ctx context.Cont
 }
 
 func (r *MultiClusterEngineReconciler) ensureClusterLifecycle(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
-	namespacedName := types.NamespacedName{Name: "cluster-curator-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
-	namespacedName = types.NamespacedName{Name: "clusterclaims-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
-	namespacedName = types.NamespacedName{Name: "provider-credential-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
-	namespacedName = types.NamespacedName{Name: "clusterlifecycle-state-metrics-v2", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
-	namespacedName = types.NamespacedName{Name: "cluster-image-set-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName := types.NamespacedName{Name: "cluster-curator-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName = types.NamespacedName{Name: "clusterclaims-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName = types.NamespacedName{Name: "provider-credential-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName = types.NamespacedName{Name: "clusterlifecycle-state-metrics-v2", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// namespacedName = types.NamespacedName{Name: "cluster-image-set-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
 
 	log := log.FromContext(ctx)
 
@@ -598,18 +598,18 @@ func (r *MultiClusterEngineReconciler) ensureNoClusterLifecycle(ctx context.Cont
 		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 	}
 
-	namespacedName := types.NamespacedName{Name: "cluster-curator-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	namespacedName = types.NamespacedName{Name: "clusterclaims-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	namespacedName = types.NamespacedName{Name: "provider-credential-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	namespacedName = types.NamespacedName{Name: "cluster-image-set-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// namespacedName := types.NamespacedName{Name: "cluster-curator-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// namespacedName = types.NamespacedName{Name: "clusterclaims-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// namespacedName = types.NamespacedName{Name: "provider-credential-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// namespacedName = types.NamespacedName{Name: "cluster-image-set-controller", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
 
 	// Deletes all templates
 	for _, template := range templates {
@@ -623,12 +623,12 @@ func (r *MultiClusterEngineReconciler) ensureNoClusterLifecycle(ctx context.Cont
 }
 
 func (r *MultiClusterEngineReconciler) ensureClusterManager(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
-	namespacedName := types.NamespacedName{Name: "cluster-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(status.ClusterManagerStatus{
-		NamespacedName: types.NamespacedName{Name: "cluster-manager"},
-	})
+	// namespacedName := types.NamespacedName{Name: "cluster-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(status.ClusterManagerStatus{
+	// 	NamespacedName: types.NamespacedName{Name: "cluster-manager"},
+	// })
 
 	log := log.FromContext(ctx)
 
@@ -664,7 +664,7 @@ func (r *MultiClusterEngineReconciler) ensureClusterManager(ctx context.Context,
 
 func (r *MultiClusterEngineReconciler) ensureNoClusterManager(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
-	namespacedName := types.NamespacedName{Name: "cluster-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// namespacedName := types.NamespacedName{Name: "cluster-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
 
 	// Renders all templates from charts
 	templates, errs := renderer.RenderChart(toggle.ClusterManagerChartDir, backplaneConfig, r.Images)
@@ -675,11 +675,11 @@ func (r *MultiClusterEngineReconciler) ensureNoClusterManager(ctx context.Contex
 		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 	}
 
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.RemoveComponent(status.ClusterManagerStatus{
-		NamespacedName: types.NamespacedName{Name: "cluster-manager"},
-	})
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.RemoveComponent(status.ClusterManagerStatus{
+	// 	NamespacedName: types.NamespacedName{Name: "cluster-manager"},
+	// })
 
 	// Delete clustermanager
 	clusterManager := &unstructured.Unstructured{}
@@ -722,10 +722,10 @@ func (r *MultiClusterEngineReconciler) ensureNoClusterManager(ctx context.Contex
 }
 
 func (r *MultiClusterEngineReconciler) ensureHyperShift(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
-	namespacedName := types.NamespacedName{Name: "hypershift-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(status.NewPresentStatus(types.NamespacedName{Name: "hypershift-addon"}, clusterManagementAddOnGVK))
+	// namespacedName := types.NamespacedName{Name: "hypershift-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(status.NewPresentStatus(types.NamespacedName{Name: "hypershift-addon"}, clusterManagementAddOnGVK))
 
 	log := log.FromContext(ctx)
 
@@ -747,7 +747,8 @@ func (r *MultiClusterEngineReconciler) ensureHyperShift(ctx context.Context, bac
 				log.Info("Couldn't apply template for hypershift due to missing CRD", "error is", err.Error())
 
 				missingCRDErrorOccured = true
-				r.StatusManager.AddComponent(clusterManagementAddOnNotFoundStatus("hypershift-preview", backplaneConfig.Spec.TargetNamespace))
+				// r.StatusManager.AddComponent(clusterManagementAddOnNotFoundStatus("hypershift-preview", backplaneConfig.Spec.TargetNamespace))
+				r.StatusManager.OverwriteComponent(crdNotFoundStatus(backplanev1.HyperShift, "ClusterManagementAddOn"))
 			} else {
 				return result, err
 			}
@@ -762,9 +763,9 @@ func (r *MultiClusterEngineReconciler) ensureHyperShift(ctx context.Context, bac
 
 func (r *MultiClusterEngineReconciler) ensureNoHyperShift(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
-	namespacedName := types.NamespacedName{Name: "hypershift-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// namespacedName := types.NamespacedName{Name: "hypershift-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
 	// Renders all templates from charts
 	templates, errs := renderer.RenderChart(toggle.HyperShiftChartDir, backplaneConfig, r.Images)
 	if len(errs) > 0 {
@@ -786,53 +787,25 @@ func (r *MultiClusterEngineReconciler) ensureNoHyperShift(ctx context.Context, b
 }
 
 func (r *MultiClusterEngineReconciler) reconcileHypershiftLocalHosting(ctx context.Context, mce *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
-	addon, err := renderer.RenderHypershiftAddon(mce)
-	if err != nil {
-		return ctrl.Result{RequeueAfter: requeuePeriod}, err
-	}
-
-	if !mce.Enabled(backplanev1.HypershiftLocalHosting) {
-		r.StatusManager.AddComponent(status.NewDisabledStatus(
-			types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
-			"Component is disabled",
-			[]*unstructured.Unstructured{addon},
-		))
-		return r.removeHypershiftLocalHosting(ctx, mce)
-	}
-
-	if !mce.Enabled(backplanev1.HyperShift) {
-		// report that hypershift must be enabled
-		r.StatusManager.AddComponent(status.NewDisabledStatus(
-			types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
-			"Local hosting only available when hypershift is enabled",
-			[]*unstructured.Unstructured{addon},
-		))
-		return r.removeHypershiftLocalHosting(ctx, mce)
-	}
-
-	if !mce.Enabled(backplanev1.LocalCluster) {
-		// report that local-cluster must be enabled
-		r.StatusManager.AddComponent(status.NewDisabledStatus(
-			types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
-			"Local hosting only available when local-cluster is enabled",
-			[]*unstructured.Unstructured{addon},
-		))
+	if !mce.Enabled(backplanev1.HypershiftLocalHosting) ||
+		!mce.Enabled(backplanev1.HyperShift) ||
+		!mce.Enabled(backplanev1.LocalCluster) {
 		return r.removeHypershiftLocalHosting(ctx, mce)
 	}
 
 	localNS := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "local-cluster"}}
-	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: localNS.GetName()}, localNS)
+	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: localNS.GetName()}, localNS)
 	if apierrors.IsNotFound(err) {
-		// wait for local-cluster namespace
-		r.StatusManager.AddComponent(status.StaticStatus{
-			NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
-			Kind:           addon.GetKind(),
+		// waiting for local-cluster namespace
+		r.StatusManager.OverwriteComponent(status.StaticStatus{
+			NamespacedName: types.NamespacedName{Name: backplanev1.HypershiftLocalHosting},
+			Kind:           "Component",
 			Condition: backplanev1.ComponentCondition{
 				Type:      "Available",
-				Name:      addon.GetName(),
+				Name:      backplanev1.HypershiftLocalHosting,
 				Status:    metav1.ConditionFalse,
 				Reason:    status.WaitingForResourceReason,
-				Kind:      addon.GetKind(),
+				Kind:      "Component",
 				Available: false,
 				Message:   "Waiting for namespace 'local-cluster'",
 			},
@@ -840,9 +813,9 @@ func (r *MultiClusterEngineReconciler) reconcileHypershiftLocalHosting(ctx conte
 		log.FromContext(ctx).Info("Can't apply hypershift-addon, waiting for local-cluster namespace")
 		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 	}
-	r.StatusManager.AddComponent(status.ManagedClusterAddOnStatus{
-		NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
-	})
+	// r.StatusManager.AddComponent(status.ManagedClusterAddOnStatus{
+	// 	NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
+	// })
 	return r.applyHypershiftLocalHosting(ctx, mce)
 }
 
@@ -857,44 +830,46 @@ func (r *MultiClusterEngineReconciler) applyHypershiftLocalHosting(ctx context.C
 			// addon CRD does not yet exist. Replace status.
 			log.FromContext(ctx).Info("Couldn't apply template for hypershiftlocalhosting due to missing CRD", "error is", err.Error())
 
-			r.StatusManager.RemoveComponent(status.ManagedClusterAddOnStatus{
-				NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
-			})
-			r.StatusManager.AddComponent(status.StaticStatus{
-				NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
-				Kind:           addon.GetKind(),
-				Condition: backplanev1.ComponentCondition{
-					Type:      "Available",
-					Name:      addon.GetName(),
-					Status:    metav1.ConditionFalse,
-					Reason:    status.WaitingForResourceReason,
-					Kind:      addon.GetKind(),
-					Available: false,
-					Message:   "Waiting for ManagedClusterAddOn CRD to be available",
-				},
-			})
+			// r.StatusManager.RemoveComponent(status.ManagedClusterAddOnStatus{
+			// 	NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
+			// })
+
+			r.StatusManager.OverwriteComponent(crdNotFoundStatus(backplanev1.HypershiftLocalHosting, "ManagedClusterAddOn"))
+			// r.StatusManager.OverwriteComponent(status.StaticStatus{
+			// 	NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
+			// 	Kind:           addon.GetKind(),
+			// 	Condition: backplanev1.ComponentCondition{
+			// 		Type:      "Available",
+			// 		Name:      addon.GetName(),
+			// 		Status:    metav1.ConditionFalse,
+			// 		Reason:    status.WaitingForResourceReason,
+			// 		Kind:      addon.GetKind(),
+			// 		Available: false,
+			// 		Message:   "Waiting for ManagedClusterAddOn CRD to be available",
+			// 	},
+			// })
 			return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 		}
 		if apierrors.IsInternalError(errors.Unwrap(err)) {
 			// likely failed to call webhook
 			log.FromContext(ctx).Info("Couldn't apply template for hypershiftlocalhosting likely due to webhook not ready", "error is", err.Error())
 
-			r.StatusManager.RemoveComponent(status.ManagedClusterAddOnStatus{
-				NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
-			})
-			r.StatusManager.AddComponent(status.StaticStatus{
-				NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
-				Kind:           addon.GetKind(),
-				Condition: backplanev1.ComponentCondition{
-					Type:      "Available",
-					Name:      addon.GetName(),
-					Status:    metav1.ConditionUnknown,
-					Reason:    status.WaitingForResourceReason,
-					Kind:      addon.GetKind(),
-					Available: false,
-					Message:   err.Error(),
-				},
-			})
+			// r.StatusManager.RemoveComponent(status.ManagedClusterAddOnStatus{
+			// 	NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
+			// })
+			// r.StatusManager.AddComponent(status.StaticStatus{
+			// 	NamespacedName: types.NamespacedName{Name: addon.GetName(), Namespace: addon.GetNamespace()},
+			// 	Kind:           addon.GetKind(),
+			// 	Condition: backplanev1.ComponentCondition{
+			// 		Type:      "Available",
+			// 		Name:      addon.GetName(),
+			// 		Status:    metav1.ConditionUnknown,
+			// 		Reason:    status.WaitingForResourceReason,
+			// 		Kind:      addon.GetKind(),
+			// 		Available: false,
+			// 		Message:   err.Error(),
+			// 	},
+			// })
 			return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 		}
 		return result, err
@@ -917,13 +892,13 @@ func (r *MultiClusterEngineReconciler) removeHypershiftLocalHosting(ctx context.
 func (r *MultiClusterEngineReconciler) ensureClusterProxyAddon(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	namespacedName := types.NamespacedName{Name: "cluster-proxy-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	namespacedName = types.NamespacedName{Name: "cluster-proxy-addon-user", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	r.StatusManager.AddComponent(status.NewPresentStatus(types.NamespacedName{Name: "cluster-proxy"}, clusterManagementAddOnGVK))
+	// namespacedName := types.NamespacedName{Name: "cluster-proxy-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// namespacedName = types.NamespacedName{Name: "cluster-proxy-addon-user", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.AddComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.RemoveComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// r.StatusManager.AddComponent(status.NewPresentStatus(types.NamespacedName{Name: "cluster-proxy"}, clusterManagementAddOnGVK))
 
 	templates, errs := renderer.RenderChart(toggle.ClusterProxyAddonDir, backplaneConfig, r.Images)
 	if len(errs) > 0 {
@@ -940,7 +915,8 @@ func (r *MultiClusterEngineReconciler) ensureClusterProxyAddon(ctx context.Conte
 		if err != nil {
 			if apimeta.IsNoMatchError(errors.Unwrap(err)) || apierrors.IsNotFound(errors.Unwrap(err)) {
 				missingCRDErrorOccured = true
-				r.StatusManager.AddComponent(clusterManagementAddOnNotFoundStatus("cluster-proxy-addon", backplaneConfig.Spec.TargetNamespace))
+				r.StatusManager.OverwriteComponent(crdNotFoundStatus(backplanev1.ClusterProxyAddon, "ClusterManagementAddOn"))
+				// r.StatusManager.AddComponent(clusterManagementAddOnNotFoundStatus("cluster-proxy-addon", backplaneConfig.Spec.TargetNamespace))
 			} else {
 				return result, err
 			}
@@ -955,12 +931,12 @@ func (r *MultiClusterEngineReconciler) ensureClusterProxyAddon(ctx context.Conte
 
 func (r *MultiClusterEngineReconciler) ensureNoClusterProxyAddon(ctx context.Context, backplaneConfig *backplanev1.MultiClusterEngine) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
-	namespacedName := types.NamespacedName{Name: "cluster-proxy-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
-	namespacedName = types.NamespacedName{Name: "cluster-proxy-addon-user", Namespace: backplaneConfig.Spec.TargetNamespace}
-	r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
-	r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// namespacedName := types.NamespacedName{Name: "cluster-proxy-addon-manager", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
+	// namespacedName = types.NamespacedName{Name: "cluster-proxy-addon-user", Namespace: backplaneConfig.Spec.TargetNamespace}
+	// r.StatusManager.RemoveComponent(toggle.EnabledStatus(namespacedName))
+	// r.StatusManager.AddComponent(toggle.DisabledStatus(namespacedName, []*unstructured.Unstructured{}))
 	// Renders all templates from charts
 	templates, errs := renderer.RenderChart(toggle.ClusterProxyAddonDir, backplaneConfig, r.Images)
 	if len(errs) > 0 {
@@ -1026,13 +1002,13 @@ func (r *MultiClusterEngineReconciler) ensureLocalCluster(ctx context.Context, m
 		return ctrl.Result{}, nil
 	}
 
-	nsn := types.NamespacedName{Name: "local-cluster", Namespace: mce.Spec.TargetNamespace}
-	lcs := status.LocalClusterStatus{
-		NamespacedName: nsn,
-		Enabled:        true,
-	}
-	r.StatusManager.RemoveComponent(lcs)
-	r.StatusManager.AddComponent(lcs)
+	// nsn := types.NamespacedName{Name: "local-cluster", Namespace: mce.Spec.TargetNamespace}
+	// lcs := status.LocalClusterStatus{
+	// 	NamespacedName: nsn,
+	// 	Enabled:        true,
+	// }
+	// r.StatusManager.RemoveComponent(lcs)
+	// r.StatusManager.AddComponent(lcs)
 
 	log.Info("Check if ManagedCluster CR exists")
 	managedCluster := utils.NewManagedCluster()
@@ -1053,16 +1029,16 @@ func (r *MultiClusterEngineReconciler) ensureLocalCluster(ctx context.Context, m
 				if apierrors.IsInternalError(err) {
 					// webhook not available
 					log.Info("ManagedCluster webhook not available, waiting for controller")
-					r.StatusManager.RemoveComponent(lcs)
-					r.StatusManager.AddComponent(status.StaticStatus{
-						NamespacedName: types.NamespacedName{Name: "local-cluster", Namespace: mce.Spec.TargetNamespace},
-						Kind:           "local-cluster",
+					// r.StatusManager.RemoveComponent(lcs)
+					r.StatusManager.OverwriteComponent(status.StaticStatus{
+						NamespacedName: types.NamespacedName{Name: backplanev1.LocalCluster},
+						Kind:           "Component",
 						Condition: backplanev1.ComponentCondition{
 							Type:      "Available",
-							Name:      "local-cluster",
+							Name:      backplanev1.LocalCluster,
 							Status:    metav1.ConditionFalse,
 							Reason:    status.WaitingForResourceReason,
-							Kind:      "local-cluster",
+							Kind:      "Component",
 							Available: false,
 							Message:   "Waiting for ManagedCluster webhook",
 						},
@@ -1083,34 +1059,35 @@ func (r *MultiClusterEngineReconciler) ensureLocalCluster(ctx context.Context, m
 		}
 	} else if apimeta.IsNoMatchError(err) {
 		// managedCluster CRD does not yet exist. Replace status.
-		r.StatusManager.RemoveComponent(lcs)
-		r.StatusManager.AddComponent(status.StaticStatus{
-			NamespacedName: types.NamespacedName{Name: "local-cluster", Namespace: mce.Spec.TargetNamespace},
-			Kind:           "local-cluster",
-			Condition: backplanev1.ComponentCondition{
-				Type:      "Available",
-				Name:      "local-cluster",
-				Status:    metav1.ConditionFalse,
-				Reason:    status.WaitingForResourceReason,
-				Kind:      "local-cluster",
-				Available: false,
-				Message:   "Waiting for ManagedCluster CRD to be available",
-			},
-		})
+		// r.StatusManager.RemoveComponent(lcs)
+		r.StatusManager.OverwriteComponent(crdNotFoundStatus(backplanev1.LocalCluster, "ManagedCluster"))
+		// r.StatusManager.AddComponent(status.StaticStatus{
+		// 	NamespacedName: types.NamespacedName{Name: "local-cluster", Namespace: mce.Spec.TargetNamespace},
+		// 	Kind:           "local-cluster",
+		// 	Condition: backplanev1.ComponentCondition{
+		// 		Type:      "Available",
+		// 		Name:      "local-cluster",
+		// 		Status:    metav1.ConditionFalse,
+		// 		Reason:    status.WaitingForResourceReason,
+		// 		Kind:      "local-cluster",
+		// 		Available: false,
+		// 		Message:   "Waiting for ManagedCluster CRD to be available",
+		// 	},
+		// })
 		return ctrl.Result{RequeueAfter: requeuePeriod}, nil
 	} else if apierrors.IsInternalError(err) {
 		// webhook not available
 		log.Info("ManagedCluster webhook not available, waiting for controller")
-		r.StatusManager.RemoveComponent(lcs)
-		r.StatusManager.AddComponent(status.StaticStatus{
-			NamespacedName: types.NamespacedName{Name: "local-cluster", Namespace: mce.Spec.TargetNamespace},
-			Kind:           "local-cluster",
+		// r.StatusManager.RemoveComponent(lcs)
+		r.StatusManager.OverwriteComponent(status.StaticStatus{
+			NamespacedName: types.NamespacedName{Name: backplanev1.LocalCluster},
+			Kind:           "Component",
 			Condition: backplanev1.ComponentCondition{
 				Type:      "Available",
-				Name:      "local-cluster",
+				Name:      backplanev1.LocalCluster,
 				Status:    metav1.ConditionFalse,
 				Reason:    status.WaitingForResourceReason,
-				Kind:      "local-cluster",
+				Kind:      "Component",
 				Available: false,
 				Message:   "Waiting for ManagedCluster webhook",
 			},
@@ -1155,13 +1132,13 @@ func (r *MultiClusterEngineReconciler) ensureNoLocalCluster(ctx context.Context,
 		return ctrl.Result{}, nil
 	}
 
-	nsn := types.NamespacedName{Name: "local-cluster", Namespace: mce.Spec.TargetNamespace}
-	lcs := status.LocalClusterStatus{
-		NamespacedName: nsn,
-		Enabled:        false,
-	}
-	r.StatusManager.RemoveComponent(lcs)
-	r.StatusManager.AddComponent(lcs)
+	// nsn := types.NamespacedName{Name: "local-cluster", Namespace: mce.Spec.TargetNamespace}
+	// lcs := status.LocalClusterStatus{
+	// 	NamespacedName: nsn,
+	// 	Enabled:        false,
+	// }
+	// r.StatusManager.RemoveComponent(lcs)
+	// r.StatusManager.AddComponent(lcs)
 
 	log.Info("Check if ManagedCluster CR exists")
 	managedCluster := utils.NewManagedCluster()
@@ -1240,6 +1217,38 @@ func clusterManagementAddOnNotFoundStatus(name, namespace string) status.StatusR
 			Kind:      "Component",
 			Available: false,
 			Message:   "Waiting for ClusterManagementAddOn CRD to be available",
+		},
+	}
+}
+
+func crdNotFoundStatus(componentName, crdName string) status.StatusReporter {
+	return status.StaticStatus{
+		NamespacedName: types.NamespacedName{Name: componentName},
+		Kind:           "Component",
+		Condition: backplanev1.ComponentCondition{
+			Type:      "Available",
+			Name:      crdName,
+			Status:    metav1.ConditionFalse,
+			Reason:    status.WaitingForResourceReason,
+			Kind:      "Component",
+			Available: false,
+			Message:   fmt.Sprintf("waiting for '%s' CRD to be available", crdName),
+		},
+	}
+}
+
+func waitingStatus(componentName, resourceKind, resourceName string) status.StatusReporter {
+	return status.StaticStatus{
+		NamespacedName: types.NamespacedName{Name: componentName},
+		Kind:           "Component",
+		Condition: backplanev1.ComponentCondition{
+			Type:      "Available",
+			Name:      resourceName,
+			Status:    metav1.ConditionFalse,
+			Reason:    status.WaitingForResourceReason,
+			Kind:      "Component",
+			Available: false,
+			Message:   fmt.Sprintf("waiting for '%s/%s' CRD to be available", resourceKind, resourceName),
 		},
 	}
 }

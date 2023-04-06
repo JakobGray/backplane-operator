@@ -48,6 +48,21 @@ func (sm *StatusTracker) RemoveComponent(sr StatusReporter) {
 	}
 }
 
+// Replaces a StatusReporter in the list of statuses to watch or add
+// it if not already in the list
+func (sm *StatusTracker) OverwriteComponent(sr StatusReporter) {
+	for i, c := range sm.Components {
+		if c.GetName() == sr.GetName() &&
+			c.GetNamespace() == sr.GetNamespace() &&
+			c.GetKind() == sr.GetKind() {
+			// Replace component reporter
+			sm.Components[i] = sr
+			return
+		}
+	}
+	sm.Components = append(sm.Components, sr)
+}
+
 func (sm *StatusTracker) AddCondition(c bpv1.MultiClusterEngineCondition) {
 	sm.Conditions = setCondition(sm.Conditions, c)
 }

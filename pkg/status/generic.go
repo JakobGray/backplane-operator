@@ -44,6 +44,22 @@ func (s StaticStatus) Status(k8sClient client.Client) bpv1.ComponentCondition {
 	return cc
 }
 
+// func NewStaticComponentStatus(name) StaticStatus {
+// 	return StaticStatus{
+// 		NamespacedName: types.NamespacedName{Name: name},
+// 		Kind:           "Component",
+// 		Condition: bpv1.ComponentCondition{
+// 			Type:      "Available",
+// 			Name:      addon.GetName(),
+// 			Status:    metav1.ConditionFalse,
+// 			Reason:    status.WaitingForResourceReason,
+// 			Kind:      addon.GetKind(),
+// 			Available: false,
+// 			Message:   "Waiting for namespace 'local-cluster'",
+// 		},
+// 	}
+// }
+
 func NewDisabledStatus(namespacedName types.NamespacedName, explanation string, resourceList []*unstructured.Unstructured) StatusReporter {
 	removals := []*unstructured.Unstructured{}
 	for _, u := range resourceList {
@@ -215,6 +231,86 @@ func (s PresentStatus) Status(k8sClient client.Client) bpv1.ComponentCondition {
 		LastTransitionTime: metav1.Now(),
 		Reason:             "Error checking status",
 		Message:            "Error getting resource",
+		Available:          false,
+	}
+}
+
+func NewNotPresentStatus(namespacedName types.NamespacedName, gvk schema.GroupVersionKind) StatusReporter {
+	return NotPresentStatus{
+		NamespacedName: namespacedName,
+		gvk:            gvk,
+	}
+}
+
+// NotPresentStatus fulfills the StatusReporter interface for a component that should not be present. It ensures a resource does not exist.
+// If in desired status will explain why with reason and message.
+type NotPresentStatus struct {
+	types.NamespacedName
+	// Resource type
+	gvk schema.GroupVersionKind
+}
+
+func (s NotPresentStatus) GetName() string {
+	return s.Name
+}
+
+func (s NotPresentStatus) GetNamespace() string {
+	return s.Namespace
+}
+
+func (s NotPresentStatus) GetKind() string {
+	return s.gvk.Kind
+}
+
+// Converts this component's status to a backplane component status
+func (s NotPresentStatus) Status(k8sClient client.Client) bpv1.ComponentCondition {
+	u := newUnstructured(s.NamespacedName, s.gvk)
+	err := k8sClient.Get(context.TODO(), types.NamespacedName{
+		Name:      u.GetName(),
+		Namespace: u.GetNamespace(),
+	}, u)
+
+	resourceName := u.GetName()
+	if u.GetNamespace() != "" {
+		resourceName = fmt.Sprintf("%s/%s", u.GetNamespace(), resourceName)
+	}
+	fullResourceName := fmt.Sprintf("<%s %s>", u.GetKind(), resourceName)
+
+	// Resource found. Not desired.
+	if err == nil {
+		return bpv1.ComponentCondition{
+			Name:      s.GetName(),
+			Kind:      s.GetKind(),
+			Type:      "Present",
+			Status:    metav1.ConditionTrue,
+			Reason:    "ResourcePresent",
+			Message:   fmt.Sprintf("The following resource remains: %s", fullResourceName),
+			Available: false,
+		}
+	}
+
+	// Recognized error response
+	if apimeta.IsNoMatchError(err) || apierrors.IsNotFound(err) {
+		return bpv1.ComponentCondition{
+			Name:      s.GetName(),
+			Kind:      s.GetKind(),
+			Type:      "Present",
+			Status:    metav1.ConditionFalse,
+			Reason:    "ResourceNotPresent",
+			Available: false,
+		}
+	}
+
+	// Unknown error getting resource
+	return bpv1.ComponentCondition{
+		Name:               s.GetName(),
+		Kind:               s.GetKind(),
+		Type:               "Unknown",
+		Status:             metav1.ConditionUnknown,
+		LastUpdateTime:     metav1.Now(),
+		LastTransitionTime: metav1.Now(),
+		Reason:             "Error",
+		Message:            fmt.Sprintf("Error checking status of %s: %s", fullResourceName, err.Error()),
 		Available:          false,
 	}
 }

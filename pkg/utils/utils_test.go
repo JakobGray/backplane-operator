@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	configv1 "github.com/openshift/api/config/v1"
 	backplanev1 "github.com/stolostron/backplane-operator/api/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -152,6 +153,107 @@ func TestGetHubType(t *testing.T) {
 			t.Setenv("OPERATOR_PACKAGE", tt.env)
 			if got := GetHubType(tt.mce); got != tt.want {
 				t.Errorf("GetHubType() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetClusterConfig(t *testing.T) {
+	type args struct {
+		cv *configv1.ClusterVersion
+	}
+	tests := []struct {
+		name    string
+		cv      *configv1.ClusterVersion
+		want    ClusterConfig
+		wantErr bool
+	}{
+		{
+			name: "OCP 4.12, console enabled",
+			cv: &configv1.ClusterVersion{
+				Status: configv1.ClusterVersionStatus{
+					History: []configv1.UpdateHistory{
+						{
+							Version: "4.12.1",
+						},
+					},
+					Capabilities: configv1.ClusterVersionCapabilitiesStatus{
+						EnabledCapabilities: []configv1.ClusterVersionCapability{
+							"Console",
+						},
+					},
+				},
+			},
+			want: ClusterConfig{
+				ConsoleEnabled: true,
+				ClusterVersion: "4.12.1",
+			},
+			wantErr: false,
+		},
+		{
+			name: "OCP 4.12, console disabled",
+			cv: &configv1.ClusterVersion{
+				Status: configv1.ClusterVersionStatus{
+					History: []configv1.UpdateHistory{
+						{
+							Version: "4.12.1",
+						},
+					},
+					Capabilities: configv1.ClusterVersionCapabilitiesStatus{
+						EnabledCapabilities: []configv1.ClusterVersionCapability{
+							"Metrics",
+						},
+					},
+				},
+			},
+			want: ClusterConfig{
+				ConsoleEnabled: false,
+				ClusterVersion: "4.12.1",
+			},
+			wantErr: false,
+		},
+		{
+			name: "OCP 4.10",
+			cv: &configv1.ClusterVersion{
+				Status: configv1.ClusterVersionStatus{
+					History: []configv1.UpdateHistory{
+						{
+							Version: "4.10.0",
+						},
+					},
+				},
+			},
+			want: ClusterConfig{
+				ConsoleEnabled: true,
+				ClusterVersion: "4.10.0",
+			},
+			wantErr: false,
+		},
+		{
+			name: "OCP 4.12, missing version history",
+			cv: &configv1.ClusterVersion{
+				Status: configv1.ClusterVersionStatus{
+					Capabilities: configv1.ClusterVersionCapabilitiesStatus{
+						EnabledCapabilities: []configv1.ClusterVersionCapability{
+							"Metrics",
+						},
+					},
+				},
+			},
+			want:    ClusterConfig{},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		os.Unsetenv("UNIT_TEST")
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GetClusterConfig(tt.cv)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetClusterConfig() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GetClusterConfig() = %v, want %v", got, tt.want)
 			}
 		})
 	}
