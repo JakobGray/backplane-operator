@@ -4,12 +4,10 @@ package foundation
 
 import (
 	"context"
-	"io/ioutil"
-	"os"
-	"path"
-	"path/filepath"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	_ "embed"
 
 	corev1 "k8s.io/api/core/v1"
 	apixv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -37,6 +35,9 @@ const (
 	clusterManagementAddonCRDName = "clustermanagementaddons.addon.open-cluster-management.io"
 	ClusterManagementAddonKind    = "ClusterManagementAddOn"
 )
+
+//go:embed workmanager.yaml
+var workManagerAddon []byte
 
 // RegistrationImage ...
 func RegistrationImage(overrides map[string]string) string {
@@ -110,29 +111,12 @@ func CanInstallAddons(ctx context.Context, client client.Client) bool {
 func GetAddons() ([]*unstructured.Unstructured, error) {
 	var addons []*unstructured.Unstructured
 
-	addonPath := addonPath
-	if val, ok := os.LookupEnv("DIRECTORY_OVERRIDE"); ok {
-		addonPath = path.Join(val, addonPath)
+	// Add work-manager addon
+	addon := &unstructured.Unstructured{}
+	if err := yaml.Unmarshal(workManagerAddon, addon); err != nil {
+		return addons, err
 	}
+	addons = append(addons, addon)
 
-	err := filepath.Walk(addonPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		addon := &unstructured.Unstructured{}
-		if info == nil || info.IsDir() {
-			return nil
-		}
-		bytesFile, e := ioutil.ReadFile(path)
-		if e != nil {
-			return err
-		}
-		if err = yaml.Unmarshal(bytesFile, addon); err != nil {
-			return err
-		}
-		addons = append(addons, addon)
-		return nil
-	})
-	return addons, err
-
+	return addons, nil
 }

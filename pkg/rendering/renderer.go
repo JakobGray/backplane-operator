@@ -44,13 +44,13 @@ type Global struct {
 }
 
 type HubConfig struct {
-	NodeSelector         map[string]string `json:"nodeSelector" structs:"nodeSelector"`
-	ProxyConfigs         map[string]string `json:"proxyConfigs" structs:"proxyConfigs"`
-	ReplicaCount         int               `json:"replicaCount" structs:"replicaCount"`
-	Tolerations          []Toleration      `json:"tolerations" structs:"tolerations"`
-	OCPVersion           string            `json:"ocpVersion" structs:"ocpVersion"`
-	ClusterIngressDomain string            `json:"clusterIngressDomain" structs:"clusterIngressDomain"`
-	HubType              string            `json:"hubType" structs:"hubType"`
+	NodeSelector         map[string]string   `json:"nodeSelector" structs:"nodeSelector"`
+	ProxyConfigs         map[string]string   `json:"proxyConfigs" structs:"proxyConfigs"`
+	ReplicaCount         int                 `json:"replicaCount" structs:"replicaCount"`
+	Tolerations          []corev1.Toleration `json:"tolerations" structs:"tolerations"`
+	OCPVersion           string              `json:"ocpVersion" structs:"ocpVersion"`
+	ClusterIngressDomain string              `json:"clusterIngressDomain" structs:"clusterIngressDomain"`
+	HubType              string              `json:"hubType" structs:"hubType"`
 }
 
 type Toleration struct {
@@ -301,9 +301,9 @@ func injectValuesOverrides(values *Values, backplaneConfig *v1.MultiClusterEngin
 	values.HubConfig.NodeSelector = backplaneConfig.Spec.NodeSelector
 
 	if len(backplaneConfig.Spec.Tolerations) > 0 {
-		values.HubConfig.Tolerations = convertTolerations(backplaneConfig.Spec.Tolerations)
+		values.HubConfig.Tolerations = backplaneConfig.Spec.Tolerations
 	} else {
-		values.HubConfig.Tolerations = convertTolerations(utils.DefaultTolerations())
+		values.HubConfig.Tolerations = utils.DefaultTolerations()
 	}
 
 	values.Org = "open-cluster-management"
