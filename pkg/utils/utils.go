@@ -198,6 +198,15 @@ func DefaultTolerations() []corev1.Toleration {
 	}
 }
 
+// GetDefaultTolerations returns the tolerations defined in MCE. If none are defined
+// it returns a default set.
+func GetDefaultTolerations(mce *backplanev1.MultiClusterEngine) []corev1.Toleration {
+	if mce.Spec.Tolerations != nil && len(mce.Spec.Tolerations) > 0 {
+		return mce.Spec.Tolerations
+	}
+	return DefaultTolerations()
+}
+
 func Contains(s []string, str string) bool {
 	for _, v := range s {
 		if v == str {
@@ -233,6 +242,16 @@ func isCommunityMode() bool {
 	} else {
 		// other option is "stolostron-engine"
 		return true
+	}
+}
+
+// isCommunityMode returns true if operator is running in community mode
+func OperatorMode() string {
+	packageName := os.Getenv("OPERATOR_PACKAGE")
+	if packageName == "multicluster-engine" {
+		return "multicluster-engine"
+	} else {
+		return "stolostron-engine"
 	}
 }
 

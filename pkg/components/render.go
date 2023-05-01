@@ -1,144 +1,132 @@
 package components
 
 import (
+	"bytes"
 	"embed"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
-	"os"
 	"text/template"
 
-	mcev1 "github.com/stolostron/backplane-operator/api/v1"
-	"github.com/stolostron/backplane-operator/pkg/utils"
-	corev1 "k8s.io/api/core/v1"
+	templates "github.com/stolostron/backplane-operator/pkg/template"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/yaml"
 )
 
-var componentMapping = map[string]string{
-	mcev1.ManagedServiceAccount:  "templates/managed-serviceaccount",
-	mcev1.ConsoleMCE:             "templates/console-mce",
-	mcev1.Discovery:              "templates/discovery",
-	mcev1.Hive:                   "",
-	mcev1.AssistedService:        "templates/assisted-service",
-	mcev1.ClusterLifecycle:       "templates/cluster-lifecycle",
-	mcev1.ClusterManager:         "templates/cluster-manager",
-	mcev1.ServerFoundation:       "templates/server-foundation",
-	mcev1.HyperShift:             "templates/hypershift",
-	mcev1.ClusterProxyAddon:      "templates/cluster-proxy-addon",
-	mcev1.HypershiftLocalHosting: "",
-	mcev1.LocalCluster:           "",
+// Renderer is a helm template renderer for a fs.FS.
+type Renderer struct {
+	componentName string
+	dir           string
+	fileSystem    fs.FS
+	templates     []*template.Template
+	ready         bool
 }
 
-type Values struct {
-	// Images is a full list of all known image addresses mapped by a snake case key name
-	Images map[string]string `json:"images"`
-
-	// Derived from MCE
-
-	// Pull policy is the image pull policy for deployment images. It derives from the
-	// multiclusterengine spec.
-	PullPolicy string `json:"pullPolicy"`
-	// Pull secret is an optional imagePullSecret for deployments.
-	PullSecret string `json:"pullSecret"`
-	// Namespace to deploy the resource into if namespace-scoped
-	Namespace    string `json:"namespace"`
-	ConfigSecret string `json:"configSecret"`
-
-	// NodeSelector for mapping pods
-	NodeSelector map[string]string `json:"nodeSelector"`
-	// Proxy environment variables for deployments
-	ProxyConfigs map[string]string   `json:"proxyConfigs"`
-	ReplicaCount int                 `json:"replicaCount"`
-	Tolerations  []corev1.Toleration `json:"tolerations"`
-
-	// Derived from runtime environment
-
-	OCPVersion           string `json:"ocpVersion"`
-	ClusterIngressDomain string `json:"clusterIngressDomain"`
-	HubType              string `json:"hubType"`
-
-	Org string `json:"org" structs:"org"`
+// NewFileTemplateRenderer creates a TemplateRenderer with the given parameters and returns a pointer to it.
+// helmChartDirPath must be an absolute file path to the root of the helm charts.
+func NewGenericRenderer(fileSystem fs.FS, componentName string) *Renderer {
+	return &Renderer{
+		componentName: componentName,
+		fileSystem:    fileSystem,
+	}
 }
 
-// GetValues returns a manifest of values for rendering templates
-func GetValues(mce *mcev1.MultiClusterEngine, images map[string]string) Values {
-	values := Values{
-		Org:        "open-cluster-management",
-		Images:     images,
-		PullPolicy: string(utils.GetImagePullPolicy(mce)),
-		PullSecret: mce.Spec.ImagePullSecret,
-		Namespace:  mce.Spec.TargetNamespace,
-		// ConfigSecret: "",
-
-		NodeSelector: mce.Spec.NodeSelector,
-		// ProxyConfigs: map[string]string{},
-		ReplicaCount:         utils.DefaultReplicaCount(mce),
-		Tolerations:          utils.DefaultTolerations(), // TODO: update method
-		OCPVersion:           os.Getenv("ACM_HUB_OCP_VERSION"),
-		ClusterIngressDomain: os.Getenv("ACM_CLUSTER_INGRESS_DOMAIN"),
-		HubType:              utils.GetHubType(mce),
+// Init reads the files from the FS into templates
+func (r *Renderer) Init() error {
+	if err := r.loadTemplates(); err != nil {
+		return err
 	}
 
-	return values
+	r.ready = true
+	return nil
+}
+
+func (r *Renderer) PrintTemplates(wr io.Writer, configuration Values) error {
+	renderedStrings, err := r.renderTemplates(configuration)
+	if err != nil {
+		return err
+	}
+	for _, f := range renderedStrings {
+		fmt.Fprintf(wr, "%s---\n", f)
+	}
+	return nil
+}
+
+// renderTemplates applies values to templates and returns resources in string form
+func (r *Renderer) renderTemplates(configuration Values) ([]string, error) {
+	if !r.ready {
+		return nil, fmt.Errorf("renderer %s is not initialized", r.componentName)
+	}
+
+	rendered := []string{}
+	for _, t := range r.templates {
+		var buf bytes.Buffer
+		err := t.Execute(&buf, configuration)
+		if err != nil {
+			return nil, fmt.Errorf("execute template: %v", err)
+		}
+		if buf.Len() == 0 {
+			return nil, fmt.Errorf("rendered template is empty")
+		}
+		rendered = append(rendered, buf.String())
+	}
+	return rendered, nil
+}
+
+// Render applies values to templates and returns resources in unstructured form
+func (r *Renderer) Render(values Values) ([]*unstructured.Unstructured, error) {
+	var templates []*unstructured.Unstructured
+	renderedStrings, err := r.renderTemplates(values)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, s := range renderedStrings {
+		unstructured := &unstructured.Unstructured{}
+		if err = yaml.Unmarshal([]byte(s), unstructured); err != nil {
+			return nil, fmt.Errorf("unmarshal to unstructured: %v", err)
+		}
+		// Add namespace to namespaced resources
+		switch unstructured.GetKind() {
+		case "Deployment", "ServiceAccount", "Role", "RoleBinding", "Service", "ConfigMap", "Route":
+			unstructured.SetNamespace(values.Namespace)
+		}
+		templates = append(templates, unstructured)
+	}
+
+	return templates, nil
+}
+
+// loadTemplates reads all files from the filesystem and creates templates for each
+func (r *Renderer) loadTemplates() error {
+	// fnames, err := fs.Glob(r.fileSystem, path.Join(r.dir, "*.yaml"))
+	fnames, err := getFilesRecursive(r.fileSystem, ".")
+	if err != nil {
+		return fmt.Errorf("list files: %v", err)
+	}
+	if len(fnames) == 0 {
+		return errors.New("no files found")
+	}
+
+	var templates []*template.Template
+	for _, f := range fnames {
+		b, err := fs.ReadFile(r.fileSystem, f)
+		if err != nil {
+			return fmt.Errorf("read file: %v", err)
+		}
+		if len(b) == 0 {
+			return fmt.Errorf("empty file: %s", f)
+		}
+		t := template.Must(template.New(f).Parse(string(b)))
+		templates = append(templates, t)
+	}
+	r.templates = templates
+	return nil
 }
 
 //go:embed templates
 var templateFS embed.FS
-
-var val = Values{
-	Namespace:  "multicluster-engine",
-	Org:        "open-cluster-management",
-	PullPolicy: "IfNotPresent",
-	Images: map[string]string{
-		"discovery_operator": "quay.io/jakobgray/discovery-operator:latest",
-	},
-	ProxyConfigs: map[string]string{
-		"HTTP_PROXY":  "test1",
-		"HTTPS_PROXY": "test2",
-		"NO_PROXY":    "test3",
-	},
-	PullSecret: "testpullsecret",
-	NodeSelector: map[string]string{
-		"select": "test",
-	},
-	Tolerations: []corev1.Toleration{
-		{
-			Key:      "dedicated",
-			Operator: "Exists",
-			Effect:   "NoSchedule",
-			Value:    "test",
-		},
-	},
-}
-
-func PrintDiscoveryFiles() {
-	files, err := getComponentFiles(mcev1.Discovery)
-	if err != nil {
-		panic(err)
-	}
-	for _, f := range files {
-		println(f)
-		b, err := fs.ReadFile(templateFS, f)
-		if err != nil {
-			panic(err)
-		}
-		t := template.Must(template.New(f).Parse(string(b)))
-		err = t.Execute(os.Stdout, val)
-		if err != nil {
-			panic(err)
-		}
-
-		// println(string(b))
-	}
-}
-
-// getComponentFiles returns a list of filepaths comprising the component
-func getComponentFiles(component string) ([]string, error) {
-	path, ok := componentMapping[component]
-	if !ok {
-		return []string{}, fmt.Errorf("Unknown component")
-	}
-
-	return getFilesRecursive(templateFS, path)
-}
 
 func getFilesRecursive(f fs.FS, root string) ([]string, error) {
 	res := []string{}
@@ -153,4 +141,49 @@ func getFilesRecursive(f fs.FS, root string) ([]string, error) {
 		return nil
 	})
 	return res, err
+}
+
+func RenderCRDs() ([]*unstructured.Unstructured, error) {
+	var crds []*unstructured.Unstructured
+	files, err := loadStaticFiles(templates.CRDFS)
+	if err != nil {
+		return nil, err
+	}
+	for _, bfile := range files {
+		crd := &unstructured.Unstructured{}
+		if err = yaml.Unmarshal(bfile, crd); err != nil {
+			return nil, fmt.Errorf("unmarshal to unstructured: %v", err)
+		}
+		crds = append(crds, crd)
+	}
+	return crds, nil
+}
+
+func PrintCRDs(wr io.Writer) error {
+	files, err := loadStaticFiles(templates.CRDFS)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		fmt.Fprintf(wr, "%s---\n", f)
+	}
+	return nil
+}
+
+func loadStaticFiles(fSys fs.FS) ([][]byte, error) {
+	var templates [][]byte
+	fnames, err := getFilesRecursive(fSys, ".")
+	if err != nil {
+		return nil, fmt.Errorf("list files: %v", err)
+	}
+
+	for _, f := range fnames {
+		b, err := fs.ReadFile(fSys, f)
+		if err != nil {
+			return nil, fmt.Errorf("read file: %v", err)
+		}
+
+		templates = append(templates, b)
+	}
+	return templates, nil
 }

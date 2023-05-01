@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infrastructure-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: infrastructure-operator
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        control-plane: infrastructure-operator
+        ocm-antiaffinity-selector: infrastructure-operator
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - infrastructure-operator
+              topologyKey: topology.kubernetes.io/zone
+            weight: 70
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - infrastructure-operator
+              topologyKey: kubernetes.io/hostname
+            weight: 35
+      containers:
+      - args:
+        - --leader-elect
+        command:
+        - /assisted-service-operator
+        env:
+{{- if .ProxyConfigs }}
+        - name: HTTP_PROXY
+          value: {{index .ProxyConfigs "HTTP_PROXY" }}
+        - name: HTTPS_PROXY
+          value: {{index .ProxyConfigs "HTTPS_PROXY" }}
+        - name: NO_PROXY
+          value: {{index .ProxyConfigs "NO_PROXY" }}
+{{- end }}
+        - name: SERVICE_IMAGE
+          value: '{{index .Images assisted_service }}'
+        - name: IMAGE_SERVICE_IMAGE
+          value: '{{index .Images assisted_image_service }}'
+        - name: DATABASE_IMAGE
+          value: '{{index .Images postgresql_12 }}'
+        - name: AGENT_IMAGE
+          value: '{{index .Images assisted_installer_agent }}'
+        - name: CONTROLLER_IMAGE
+          value: '{{index .Images assisted_installer_controller }}'
+        - name: INSTALLER_IMAGE
+          value: '{{index .Images assisted_installer }}'
+        - name: OS_IMAGES
+          value: '[{"openshift_version":"4.8","cpu_architecture":"x86_64","url":"https://mirror.openshift.com/pub/openshift-v4/x86_64/dependencies/rhcos/4.8/4.8.14/rhcos-4.8.14-x86_64-live.x86_64.iso","version":"48.84.202109241901-0"},{"openshift_version":"4.9","cpu_architecture":"x86_64","url":"https://mirror.openshift.com/pub/openshift-v4/x86_64/dependencies/rhcos/4.9/4.9.45/rhcos-4.9.45-x86_64-live.x86_64.iso","version":"49.84.202207192205-0"},{"openshift_version":"4.10","cpu_architecture":"x86_64","url":"https://mirror.openshift.com/pub/openshift-v4/x86_64/dependencies/rhcos/4.10/4.10.37/rhcos-4.10.37-x86_64-live.x86_64.iso","version":"410.84.202210040010-0"},{"openshift_version":"4.10","cpu_architecture":"arm64","url":"https://mirror.openshift.com/pub/openshift-v4/aarch64/dependencies/rhcos/4.10/4.10.37/rhcos-4.10.37-aarch64-live.aarch64.iso","version":"410.84.202210040011-0"},{"openshift_version":"4.11","cpu_architecture":"x86_64","url":"https://mirror.openshift.com/pub/openshift-v4/x86_64/dependencies/rhcos/4.11/4.11.9/rhcos-4.11.9-x86_64-live.x86_64.iso","version":"411.86.202210041459-0"},{"openshift_version":"4.11","cpu_architecture":"arm64","url":"https://mirror.openshift.com/pub/openshift-v4/aarch64/dependencies/rhcos/4.11/4.11.9/rhcos-4.11.9-aarch64-live.aarch64.iso","version":"411.86.202210032347-0"},{"openshift_version":"4.11","cpu_architecture":"s390x","url":"https://mirror.openshift.com/pub/openshift-v4/s390x/dependencies/rhcos/4.11/4.11.9/rhcos-4.11.9-s390x-live.s390x.iso","version":"411.86.202210171842-0"},{"openshift_version":"4.11","cpu_architecture":"ppc64le","url":"https://mirror.openshift.com/pub/openshift-v4/ppc64le/dependencies/rhcos/4.11/4.11.9/rhcos-4.11.9-ppc64le-live.ppc64le.iso","version":"411.86.202210171844-0"},{"openshift_version":"4.12","cpu_architecture":"x86_64","url":"https://mirror.openshift.com/pub/openshift-v4/x86_64/dependencies/rhcos/4.12/4.12.3/rhcos-4.12.3-x86_64-live.x86_64.iso","version":"412.86.202301311551-0"},{"openshift_version":"4.12","cpu_architecture":"arm64","url":"https://mirror.openshift.com/pub/openshift-v4/aarch64/dependencies/rhcos/4.12/4.12.3/rhcos-4.12.3-aarch64-live.aarch64.iso","version":"412.86.202301311551-0"},{"openshift_version":"4.12","cpu_architecture":"s390x","url":"https://mirror.openshift.com/pub/openshift-v4/s390x/dependencies/rhcos/4.12/4.12.3/rhcos-4.12.3-s390x-live.s390x.iso","version":"412.86.202301311551-0"},{"openshift_version":"4.12","cpu_architecture":"ppc64le","url":"https://mirror.openshift.com/pub/openshift-v4/ppc64le/dependencies/rhcos/4.12/4.12.3/rhcos-4.12.3-ppc64le-live.ppc64le.iso","version":"412.86.202301311551-0"},{"openshift_version":"4.13","cpu_architecture":"x86_64","url":"https://mirror.openshift.com/pub/openshift-v4/x86_64/dependencies/rhcos/pre-release/4.13.0-rc.2/rhcos-4.13.0-rc.2-x86_64-live.x86_64.iso","version":"413.92.202303281804-0"},{"openshift_version":"4.13","cpu_architecture":"arm64","url":"https://mirror.openshift.com/pub/openshift-v4/aarch64/dependencies/rhcos/pre-release/4.13.0-rc.2/rhcos-4.13.0-rc.2-aarch64-live.aarch64.iso","version":"413.92.202303281804-0"},{"openshift_version":"4.13","cpu_architecture":"ppc64le","url":"https://mirror.openshift.com/pub/openshift-v4/ppc64le/dependencies/rhcos/pre-release/4.13.0-ec.3/rhcos-4.13.0-ec.3-ppc64le-live.ppc64le.iso","version":"413.86.202301302144-0"},{"openshift_version":"4.13","cpu_architecture":"s390x","url":"https://mirror.openshift.com/pub/openshift-v4/s390x/dependencies/rhcos/pre-release/4.13.0-ec.3/rhcos-4.13.0-ec.3-s390x-live.s390x.iso","version":"413.86.202301302144-0"}]'
+        - name: SERVICE_ACCOUNT_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.serviceAccountName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        image: '{{index .Images assisted_service }}'
+        imagePullPolicy: {{ .PullPolicy }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: manager
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+      hostIPC: false
+      hostNetwork: false
+      hostPID: false
+{{- if .PullSecret }}
+      imagePullSecrets:
+      - name: {{ .PullSecret }}
+{{- end }}
+{{- if .NodeSelector }}
+      nodeSelector:
+{{- range $key, $value := .NodeSelector }}
+        {{$key}}: "{{$value}}"
+      {{- end }}
+{{- end }}
+      securityContext:
+        runAsNonRoot: true
+      serviceAccountName: assisted-service
+      terminationGracePeriodSeconds: 10
+{{- with .Tolerations }}
+      tolerations:
+      {{- range . }}
+      - {{ if .Key }} key: {{ .Key }} {{- end }}
+        {{ if .Operator }} operator: {{ .Operator }} {{- end }}
+        {{ if .Value }} value: {{ .Value }} {{- end }}
+        {{ if .Effect }} effect: {{ .Effect }} {{- end }}
+        {{ if .TolerationSeconds }} tolerationSeconds: {{ .TolerationSeconds }} {{- end }}
+      {{- end }}
+{{- end }}

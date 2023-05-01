@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: managed-serviceaccount-addon-manager
+spec:
+  replicas: {{ .ReplicaCount }}
+  selector:
+    matchLabels:
+      open-cluster-management.io/addon: managed-serviceaccount
+  template:
+    metadata:
+      labels:
+        ocm-antiaffinity-selector: managed-serviceaccount-addon-manager
+        open-cluster-management.io/addon: managed-serviceaccount
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - managed-serviceaccount-addon-manager
+              topologyKey: topology.kubernetes.io/zone
+            weight: 70
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - managed-serviceaccount-addon-manager
+              topologyKey: kubernetes.io/hostname
+            weight: 35
+      containers:
+      - args:
+        - --leader-elect=true
+        - --agent-image-name={{index .Images managed_serviceaccount }}
+        - --agent-install-all=false
+        - --feature-gates=EphemeralIdentity=true
+        command:
+        - /manager
+        env:
+{{- if .Values.global.pullSecret }}
+        - name: AGENT_IMAGE_PULL_SECRET
+          value: {{ .Values.global.pullSecret }}
+{{- end }}
+{{- if .ProxyConfigs }}
+        - name: HTTP_PROXY
+          value: {{index .ProxyConfigs "HTTP_PROXY" }}
+        - name: HTTPS_PROXY
+          value: {{index .ProxyConfigs "HTTPS_PROXY" }}
+        - name: NO_PROXY
+          value: {{index .ProxyConfigs "NO_PROXY" }}
+{{- end }}
+        image: '{{index .Images managed_serviceaccount }}'
+        imagePullPolicy: {{ .PullPolicy }}
+        name: manager
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+      hostIPC: false
+      hostNetwork: false
+      hostPID: false
+{{- if .PullSecret }}
+      imagePullSecrets:
+      - name: {{ .PullSecret }}
+{{- end }}
+{{- if .NodeSelector }}
+      nodeSelector:
+{{- range $key, $value := .NodeSelector }}
+        {{$key}}: "{{$value}}"
+      {{- end }}
+{{- end }}
+      securityContext:
+        runAsNonRoot: true
+      serviceAccount: managed-serviceaccount
+{{- with .Tolerations }}
+      tolerations:
+      {{- range . }}
+      - {{ if .Key }} key: {{ .Key }} {{- end }}
+        {{ if .Operator }} operator: {{ .Operator }} {{- end }}
+        {{ if .Value }} value: {{ .Value }} {{- end }}
+        {{ if .Effect }} effect: {{ .Effect }} {{- end }}
+        {{ if .TolerationSeconds }} tolerationSeconds: {{ .TolerationSeconds }} {{- end }}
+      {{- end }}
+{{- end }}

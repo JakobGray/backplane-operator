@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discovery-operator
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: discovery-operator
+        ocm-antiaffinity-selector: discovery-operator
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - discovery-operator
+              topologyKey: topology.kubernetes.io/zone
+            weight: 70
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - discovery-operator
+              topologyKey: kubernetes.io/hostname
+            weight: 35
+      containers:
+      - args:
+        - --leader-elect
+        command:
+        - /manager
+        env:
+{{- if .ProxyConfigs }}
+        - name: HTTP_PROXY
+          value: {{index .ProxyConfigs "HTTP_PROXY" }}
+        - name: HTTPS_PROXY
+          value: {{index .ProxyConfigs "HTTPS_PROXY" }}
+        - name: NO_PROXY
+          value: {{index .ProxyConfigs "NO_PROXY" }}
+{{- end }}
+        image: {{index .Images "discovery_operator" }}
+        imagePullPolicy: {{ .PullPolicy }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: discovery-operator
+        ports:
+        - containerPort: 8080
+          name: metrics
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 300m
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /etc/pki/ca-trust/extracted/pem/
+          name: trusted-ca-bundle
+      hostIPC: false
+      hostNetwork: false
+      hostPID: false
+{{- if .PullSecret }}
+      imagePullSecrets:
+      - name: {{ .PullSecret }}
+{{- end }}
+{{- if .NodeSelector }}
+      nodeSelector:
+{{- range $key, $value := .NodeSelector }}
+        {{$key}}: "{{$value}}"
+      {{- end }}
+{{- end }}
+      securityContext:
+        runAsNonRoot: true
+      serviceAccountName: discovery-operator
+      terminationGracePeriodSeconds: 10
+{{- with .Tolerations }}
+      tolerations:
+      {{- range . }}
+      - {{ if .Key }} key: {{ .Key }} {{- end }}
+        {{ if .Operator }} operator: {{ .Operator }} {{- end }}
+        {{ if .Value }} value: {{ .Value }} {{- end }}
+        {{ if .Effect }} effect: {{ .Effect }} {{- end }}
+        {{ if .TolerationSeconds }} tolerationSeconds: {{ .TolerationSeconds }} {{- end }}
+      {{- end }}
+{{- end }}
+      volumes:
+      - configMap:
+          defaultMode: 440
+          items:
+          - key: ca-bundle.crt
+            path: tls-ca-bundle.pem
+          name: trusted-ca-bundle
+          optional: true
+        name: trusted-ca-bundle

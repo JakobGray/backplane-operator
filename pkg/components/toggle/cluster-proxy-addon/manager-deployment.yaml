@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: '{{ .Namespace }}'
+  name: cluster-proxy-addon-manager
+  labels:
+    chart: cluster-proxy-addon-2.1.0
+    component: cluster-proxy-addon-manager
+spec:
+  replicas: {{ .ReplicaCount }}
+  selector:
+    matchLabels:
+      chart: cluster-proxy-addon-2.1.0
+      component: cluster-proxy-addon-manager
+  template:
+    metadata:
+      labels:
+        chart: cluster-proxy-addon-2.1.0
+        component: cluster-proxy-addon-manager
+        ocm-antiaffinity-selector: cluster-proxy-addon-manager
+    spec:
+      serviceAccount: cluster-proxy
+      hostNetwork: false
+      hostPID: false
+      hostIPC: false
+      securityContext:
+        runAsNonRoot: true
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - amd64
+                - ppc64le
+                - s390x
+                - arm64
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 70
+            podAffinityTerm:
+              topologyKey: topology.kubernetes.io/zone
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - cluster-proxy-addon-manager
+          - weight: 35
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - cluster-proxy-addon-manager
+      containers:
+        - name: manager
+          image: '{{index .Images cluster_proxy }}'
+          imagePullPolicy: {{ .PullPolicy }}
+          command:
+            - /manager
+          env:
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          {{- if .ProxyConfigs }}
+          - name: HTTP_PROXY
+            value: {{index .ProxyConfigs "HTTP_PROXY" }}
+          - name: HTTPS_PROXY
+            value: {{index .ProxyConfigs "HTTPS_PROXY" }}
+          - name: NO_PROXY
+            value: {{index .ProxyConfigs "NO_PROXY" }}
+          {{- end }}
+          args:
+            - --leader-elect=true
+            - --signer-secret-namespace={{ .Namespace }}
+            - --agent-image-name={{index .Images cluster_proxy }}
+            - --agent-install-namespace=open-cluster-management-agent-addon
+            - --agent-install-all=true
+            - --enable-kube-api-proxy=false
+{{- if .PullSecret }}
+      imagePullSecrets:
+      - name: {{ .PullSecret }}
+{{- end }}
+{{- if .NodeSelector }}
+      nodeSelector:
+{{- range $key, $value := .NodeSelector }}
+        {{$key}}: "{{$value}}"
+      {{- end }}
+{{- end }}
+{{- with .Tolerations }}
+      tolerations:
+      {{- range . }}
+      - {{ if .Key }} key: {{ .Key }} {{- end }}
+        {{ if .Operator }} operator: {{ .Operator }} {{- end }}
+        {{ if .Value }} value: {{ .Value }} {{- end }}
+        {{ if .Effect }} effect: {{ .Effect }} {{- end }}
+        {{ if .TolerationSeconds }} tolerationSeconds: {{ .TolerationSeconds }} {{- end }}
+      {{- end }}
+{{- end }}

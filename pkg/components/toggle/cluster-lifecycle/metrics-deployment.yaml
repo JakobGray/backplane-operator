@@ -1,0 +1,122 @@
+# Copyright Contributors to the Open Cluster Management project
+
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: clusterlifecycle-state-metrics-v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clusterlifecycle-state-metrics-v2
+  template:
+    metadata:
+      labels:
+        app: clusterlifecycle-state-metrics-v2
+        ocm-antiaffinity-selector: "clusterlifecycle-state-metrics-v2"
+    spec:
+{{- if .PullSecret }}
+      imagePullSecrets:
+      - name: {{ .PullSecret }}
+{{- end }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - clusterlifecycle-state-metrics-v2
+              topologyKey: topology.kubernetes.io/zone
+            weight: 70
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - clusterlifecycle-state-metrics-v2
+              topologyKey: kubernetes.io/hostname
+            weight: 35
+      serviceAccountName: clusterlifecycle-state-metrics-v2
+      containers:
+      - name: clusterlifecycle-state-metrics
+        image: "{{index .Images clusterlifecycle_state_metrics }}"
+        imagePullPolicy: {{ .PullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "2Gi"
+            cpu: "500m"
+        args:
+          - "--http-port=8080"
+          - "--http-telemetry-port=8081"
+          - "--https-port=8443"
+          - "--https-telemetry-port=8444"
+          - "--tls-crt-file=/var/run/clusterlifecycle-state-metrics/tls.crt"
+          - "--tls-key-file=/var/run/clusterlifecycle-state-metrics/tls.key"
+{{- if .HubType }}
+          - "--hub-type={{ .HubType }}"
+{{- end }}
+        env:
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: GOMEMLIMIT
+            value: "1892MiB"
+{{- if .ProxyConfigs }}
+          - name: HTTP_PROXY
+            value: {{index .ProxyConfigs "HTTP_PROXY" }}
+          - name: HTTPS_PROXY
+            value: {{index .ProxyConfigs "HTTPS_PROXY" }}
+          - name: NO_PROXY
+            value: {{index .ProxyConfigs "NO_PROXY" }}
+{{- end }}
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        volumeMounts:
+          - mountPath: "/var/run/clusterlifecycle-state-metrics"
+            name: certs
+            readOnly: true
+      volumes:
+      - name: certs
+        secret:
+          secretName: clusterlifecycle-state-metrics-certs
+{{- if .NodeSelector }}
+      nodeSelector:
+{{- range $key, $value := .NodeSelector }}
+        {{$key}}: "{{$value}}"
+      {{- end }}
+{{- end }}
+{{- with .Tolerations }}
+      tolerations:
+      {{- range . }}
+      - {{ if .Key }} key: {{ .Key }} {{- end }}
+        {{ if .Operator }} operator: {{ .Operator }} {{- end }}
+        {{ if .Value }} value: {{ .Value }} {{- end }}
+        {{ if .Effect }} effect: {{ .Effect }} {{- end }}
+        {{ if .TolerationSeconds }} tolerationSeconds: {{ .TolerationSeconds }} {{- end }}
+      {{- end }}
+{{- end }}

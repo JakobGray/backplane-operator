@@ -41,14 +41,14 @@ spec:
         command:
         - /manager
         env:
-{{if .ProxyConfigs }}
+{{- if .ProxyConfigs -}}
         - name: HTTP_PROXY
           value: {{index .ProxyConfigs "HTTP_PROXY" }}
         - name: HTTPS_PROXY
           value: {{index .ProxyConfigs "HTTPS_PROXY" }}
         - name: NO_PROXY
           value: {{index .ProxyConfigs "NO_PROXY" }}
-{{end }}
+{{- end -}}
         image: "{{index .Images "discovery_operator" }}"
         imagePullPolicy: {{ .PullPolicy }}
         livenessProbe:

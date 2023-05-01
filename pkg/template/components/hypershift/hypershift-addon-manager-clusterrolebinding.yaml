@@ -1,0 +1,12 @@
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Org }}:hypershift-preview:hypershift-addon-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Org }}:hypershift-preview:hypershift-addon-manager
+subjects:
+  - kind: ServiceAccount
+    name: hypershift-addon-manager-sa
+    namespace: {{ .Namespace }}

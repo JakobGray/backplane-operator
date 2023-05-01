@@ -1,0 +1,138 @@
+# Copyright Contributors to the Open Cluster Management project.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:  
+  name: clusterclaims-controller
+spec:
+  replicas: {{ .ReplicaCount }}
+  selector:
+    matchLabels:
+      name: clusterclaims-controller
+  template:
+    metadata:
+      labels:
+        name: clusterclaims-controller
+        ocm-antiaffinity-selector: "clusterclaims-controller"
+    spec:
+      {{- if .Values.global.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.pullSecret }}
+      {{- end }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - amd64
+                - ppc64le
+                - s390x
+                - arm64
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 70
+            podAffinityTerm:
+              topologyKey: topology.kubernetes.io/zone
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - clusterclaims-controller
+          - weight: 35
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - clusterclaims-controller
+      serviceAccountName: clusterclaims
+      hostNetwork: false
+      hostPID: false
+      hostIPC: false
+      securityContext:
+        runAsNonRoot: true
+      containers:
+      - command:
+          - "./manager-clusterclaims"
+          - "-enable-leader-election"
+        image: "{{index .Images clusterclaims_controller }}"
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: GOMEMLIMIT
+          value: "1892MiB"
+{{- if .ProxyConfigs }}
+        - name: HTTP_PROXY
+          value: {{index .ProxyConfigs "HTTP_PROXY" }}
+        - name: HTTPS_PROXY
+          value: {{index .ProxyConfigs "HTTPS_PROXY" }}
+        - name: NO_PROXY
+          value: {{index .ProxyConfigs "NO_PROXY" }}
+{{- end }}
+        imagePullPolicy: "{{ .Values.global.pullPolicy }}"
+        name: clusterclaims-controller
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "500m"
+          requests:
+            cpu: "3m"
+            memory: "65Mi"
+      - command:
+        - "./manager-clusterpools-delete"
+        - "-enable-leader-election"
+        image: "{{index .Images clusterclaims_controller }}"
+        env:
+        - name: GOMEMLIMIT
+          value: "1892MiB"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        imagePullPolicy: "{{ .Values.global.pullPolicy }}"
+        name: clusterpools-delete-controller
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "500m"
+          requests:
+            cpu: "3m"
+            memory: "65Mi"
+{{- if .NodeSelector }}
+      nodeSelector:
+{{- range $key, $value := .NodeSelector }}
+        {{$key}}: "{{$value}}"
+      {{- end }}
+{{- end }}
+{{- with .Tolerations }}
+      tolerations:
+      {{- range . }}
+      - {{ if .Key }} key: {{ .Key }} {{- end }}
+        {{ if .Operator }} operator: {{ .Operator }} {{- end }}
+        {{ if .Value }} value: {{ .Value }} {{- end }}
+        {{ if .Effect }} effect: {{ .Effect }} {{- end }}
+        {{ if .TolerationSeconds }} tolerationSeconds: {{ .TolerationSeconds }} {{- end }}
+      {{- end }}
+{{- end }}

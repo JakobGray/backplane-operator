@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ocm-webhook
+spec:
+  replicas: {{ .ReplicaCount }}
+  selector:
+    matchLabels:
+      control-plane: ocm-webhook
+      ocm-antiaffinity-selector: ocm-webhook
+  template:
+    metadata:
+      labels:
+        control-plane: ocm-webhook
+        ocm-antiaffinity-selector: ocm-webhook
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - ocm-webhook
+              topologyKey: topology.kubernetes.io/zone
+            weight: 70
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: ocm-antiaffinity-selector
+                  operator: In
+                  values:
+                  - ocm-webhook
+              topologyKey: kubernetes.io/hostname
+            weight: 35
+      containers:
+      - args:
+        - /webhook
+        - --tls-cert-file=/var/run/ocm-webhook/tls.crt
+        - --tls-private-key-file=/var/run/ocm-webhook/tls.key
+        env:
+{{- if .ProxyConfigs }}
+        - name: HTTP_PROXY
+          value: {{index .ProxyConfigs "HTTP_PROXY" }}
+        - name: HTTPS_PROXY
+          value: {{index .ProxyConfigs "HTTPS_PROXY" }}
+        - name: NO_PROXY
+          value: {{index .ProxyConfigs "NO_PROXY" }}
+{{- end }}
+        image: '{{index .Images multicloud_manager }}'
+        imagePullPolicy: {{ .PullPolicy }}
+        name: ocm-webhook
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        livenessProbe:
+          exec:
+            command:
+            - ls
+          initialDelaySeconds: 15
+          periodSeconds: 15
+        readinessProbe:
+          exec:
+            command:
+            - ls
+          initialDelaySeconds: 15
+          periodSeconds: 15
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 2Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+        volumeMounts:
+          - name: webhook-cert
+            mountPath: /var/run/ocm-webhook
+      hostIPC: false
+      hostNetwork: false
+      hostPID: false
+{{- if .PullSecret }}
+      imagePullSecrets:
+      - name: {{ .PullSecret }}
+{{- end }}
+{{- if .NodeSelector }}
+      nodeSelector:
+{{- range $key, $value := .NodeSelector }}
+        {{$key}}: "{{$value}}"
+      {{- end }}
+{{- end }}
+      securityContext:
+        runAsNonRoot: true
+      serviceAccountName: ocm-foundation-sa
+      terminationGracePeriodSeconds: 10
+{{- with .Tolerations }}
+      tolerations:
+      {{- range . }}
+      - {{ if .Key }} key: {{ .Key }} {{- end }}
+        {{ if .Operator }} operator: {{ .Operator }} {{- end }}
+        {{ if .Value }} value: {{ .Value }} {{- end }}
+        {{ if .Effect }} effect: {{ .Effect }} {{- end }}
+        {{ if .TolerationSeconds }} tolerationSeconds: {{ .TolerationSeconds }} {{- end }}
+      {{- end }}
+{{- end }}
+      volumes:
+      - name: webhook-cert
+        secret:
+          secretName: ocm-webhook
+          defaultMode: 420

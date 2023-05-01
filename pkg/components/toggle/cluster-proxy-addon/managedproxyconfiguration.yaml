@@ -1,0 +1,43 @@
+apiVersion: proxy.open-cluster-management.io/v1alpha1
+kind: ManagedProxyConfiguration
+metadata:
+  name: cluster-proxy
+spec:
+  authentication:
+    dump:
+      secrets: {}
+    signer:
+      type: SelfSigned
+  proxyServer:
+    image: '{{index .Images cluster_proxy_addon }}'
+    namespace: '{{ .Namespace }}'
+    replicas: {{ .ReplicaCount }}
+    entrypoint:
+      type: Hostname
+      hostname:
+        value: cluster-proxy-anp.{{ .ClusterIngressDomain }}
+      port: 443
+    additionalArgs:
+      - "--keepalive-time=30s" # Use this to keep connection from proxy-agent stay alive
+    nodePlacement:
+{{- with .Tolerations }}
+      tolerations:
+      {{- range . }}
+      - {{ if .Key }} key: {{ .Key }} {{- end }}
+        {{ if .Operator }} operator: {{ .Operator }} {{- end }}
+        {{ if .Value }} value: {{ .Value }} {{- end }}
+        {{ if .Effect }} effect: {{ .Effect }} {{- end }}
+        {{ if .TolerationSeconds }} tolerationSeconds: {{ .TolerationSeconds }} {{- end }}
+      {{- end }}
+{{- end }}
+{{- if .NodeSelector }}
+      nodeSelector:
+{{- range $key, $value := .NodeSelector }}
+        {{$key}}: "{{$value}}"
+      {{- end }}
+{{- end }}
+  proxyAgent:
+    image: '{{index .Images cluster_proxy_addon }}'
+    replicas: 1
+    imagePullSecrets:
+    - "open-cluster-management-image-pull-credentials"
